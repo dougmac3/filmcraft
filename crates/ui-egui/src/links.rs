@@ -56,6 +56,11 @@ pub fn menu_hint(command: &str) -> Option<String> {
     )
 }
 
+/// An ArtCraft community, website or FilmCraft repository address (hidden inside Fossa Direct).
+pub fn is_project_link(url: &str) -> bool {
+    url.contains("artcraft") || url.contains("github.com/storytold/")
+}
+
 /// Open `url` in the system browser (a new tab on the web). The desktop host's
 /// [`HostHooks::open_url`](crate::HostHooks::open_url) opens it; without the hook, or when it
 /// fails, it goes through `ctx.open_url`, which only does something on the web: the native egui
@@ -63,6 +68,9 @@ pub fn menu_hint(command: &str) -> Option<String> {
 /// host can't open a browser, a dialog shows the address until it is closed ([`show_failed`]),
 /// so the click is never silently lost: the clipboard can fail too, and egui only logs that.
 pub fn open(app: &mut crate::FilmcraftApp, ctx: &egui::Context, url: &str) {
+    if crate::fossa_hosted() && is_project_link(url) {
+        return;
+    }
     if let Some(f) = app.hooks.open_url.as_mut() {
         match f(url) {
             Ok(()) => return,

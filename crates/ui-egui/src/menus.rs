@@ -713,6 +713,9 @@ pub fn menu_items(app: &FilmcraftApp) -> Vec<MenuItem> {
     }
     crate::panels::workspaces::menu(app, &mut v);
     open_recent(&mut v, &app.session, |n| app.ui.language.tr(n).to_string());
+    if crate::fossa_hosted() {
+        v.retain(|it| crate::links::url_for(&it.id).is_none() && it.id != "help.filmcraftHelp");
+    }
     v
 }
 

@@ -116,6 +116,15 @@ impl eframe::App for WebApp {
     }
 }
 
+/// `?fossa=<origin>`: hosted by Fossa Direct when the origin is this machine.
+fn fossa_hosted() -> bool {
+    let fossa = web_sys::window()
+        .and_then(|w| w.location().search().ok())
+        .and_then(|s| web_sys::UrlSearchParams::new_with_str(&s).ok())
+        .and_then(|p| p.get("fossa"));
+    fossa.is_some_and(|o| o.starts_with("http://127.0.0.1:") || o.starts_with("http://localhost:"))
+}
+
 fn query_flag(name: &str) -> bool {
     web_sys::window().and_then(|w| w.location().search().ok()).and_then(|s| web_sys::UrlSearchParams::new_with_str(&s).ok()).is_some_and(|p| p.has(name))
 }
@@ -124,6 +133,7 @@ fn query_flag(name: &str) -> bool {
 #[wasm_bindgen]
 pub async fn start(canvas_id: String) -> Result<(), JsValue> {
     eframe::WebLogger::init(log::LevelFilter::Info).ok();
+    filmcraft_ui_egui::FOSSA_HOSTED.store(fossa_hosted(), std::sync::atomic::Ordering::Relaxed);
     let t0 = web_time::Instant::now();
     let doc = web_sys::window().and_then(|w| w.document()).ok_or("no document")?;
     let canvas: web_sys::HtmlCanvasElement = doc.get_element_by_id(&canvas_id).ok_or("no canvas")?.dyn_into()?;

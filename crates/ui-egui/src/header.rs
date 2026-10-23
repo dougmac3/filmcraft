@@ -57,7 +57,7 @@ pub fn show(app: &mut FilmcraftApp, ui: &mut egui::Ui, rect: Rect) {
     let mut left_end = x;
     // In-window menus when there is no native menu bar.
     if app.ui.show_menu_bar {
-        let menu_rect = Rect::from_min_max(pos2(x + 6.0, rect.min.y + 7.0), pos2(x + 520.0, rect.max.y - 7.0));
+        let menu_rect = Rect::from_min_max(pos2(x + 6.0, rect.min.y + 7.0), pos2(if crate::fossa_hosted() { (rect.max.x - 60.0).max(x + 6.0) } else { x + 520.0 }, rect.max.y - 7.0));
         let mut mu = ui.new_child(egui::UiBuilder::new().max_rect(menu_rect).layout(egui::Layout::left_to_right(egui::Align::Center)));
         mu.style_mut().visuals.widgets.inactive.weak_bg_fill = Color32::TRANSPARENT;
         mu.style_mut().visuals.widgets.inactive.bg_stroke = Stroke::NONE;
@@ -80,6 +80,15 @@ pub fn show(app: &mut FilmcraftApp, ui: &mut egui::Ui, rect: Rect) {
         icons::paint(ui.painter(), r.shrink(6.0), icon, if resp.hovered() { t.text } else { t.text_dim });
         resp
     };
+    // Inside Fossa Direct: Quick Export only; no title, community link or window controls.
+    if crate::fossa_hosted() {
+        if btn(ui, Icon::Export, "quickExport", tl!("Quick Export"), app).clicked() {
+            app.ui.export.quick_open = !app.ui.export.quick_open;
+            ui.ctx().data_mut(|d| d.insert_temp(egui::Id::new("quick-export-toggled"), true));
+        }
+        crate::panels::export_mode::quick_export(app, ui.ctx(), pos2(rect.max.x - 14.0 - 340.0, rect.max.y + 4.0));
+        return;
+    }
     if btn(ui, Icon::Fullscreen, "fullscreen", tl!("Full screen"), app).clicked() {
         let fs = ui.ctx().input(|i| i.viewport().fullscreen.unwrap_or(false));
         ui.ctx().send_viewport_cmd(egui::ViewportCommand::Fullscreen(!fs));

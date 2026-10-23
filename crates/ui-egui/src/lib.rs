@@ -63,6 +63,13 @@ pub mod theme;
 mod theme_favorites;
 pub mod widgets;
 
+/// Running inside Fossa Direct (web build opened with `?fossa=<local origin>`): no ArtCraft branding or community links.
+pub static FOSSA_HOSTED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+pub fn fossa_hosted() -> bool {
+    FOSSA_HOSTED.load(std::sync::atomic::Ordering::Relaxed)
+}
+
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::sync::mpsc::{Receiver, Sender};

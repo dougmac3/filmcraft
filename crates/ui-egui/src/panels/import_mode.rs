@@ -45,6 +45,9 @@ pub fn show(app: &mut FilmcraftApp, ui: &mut egui::Ui, rect: Rect) {
         }
     }
     let y = recent(app, ui, rect, 90.0 + 150.0 + 36.0);
+    if crate::fossa_hosted() {
+        return;
+    }
     // Community and project links.
     // ArtCraft wordmark (first-party trademark, docs/brand/), then the section title.
     let logo = crate::brand::paint_wordmark(ui, rect.min + vec2(24.0, y), 15.0, app.ui.dark);
