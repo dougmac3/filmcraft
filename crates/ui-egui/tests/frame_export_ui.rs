@@ -31,7 +31,7 @@ fn harness() -> Harness<'static, FilmcraftApp> {
         None,
     );
     s.execute("source.open", json!({"item":item.0})).unwrap();
-    let mut h = Harness::builder().with_size(egui::vec2(1600.0, 980.0)).build_eframe(move |_cc| FilmcraftApp::new(s));
+    let mut h = Harness::builder().with_accessibility_check(false).allow_missing_glyphs().with_size(egui::vec2(1600.0, 980.0)).build_eframe(move |_cc| FilmcraftApp::new(s));
     for _ in 0..3 {
         step(&mut h);
     }

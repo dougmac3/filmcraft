@@ -89,7 +89,7 @@ fn system_fonts() -> &'static [(String, Arc<FontData>)] {
             let Some(data) = face.data() else {
                 continue;
             };
-            let font = FontData { font: Cow::Owned(data), index: face.info.index, tweak: Default::default() };
+            let font = FontData { font: std::sync::Arc::new(data), index: face.info.index, tweak: Default::default() };
             out.push((format!("system-{}", s.code.to_lowercase()), Arc::new(font)));
             chosen.push(face);
         }

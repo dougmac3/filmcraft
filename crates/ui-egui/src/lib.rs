@@ -38,6 +38,8 @@ pub mod crash;
 pub mod credits;
 pub mod dock;
 mod dock_shared;
+#[cfg(not(target_arch = "wasm32"))]
+pub mod fossa_native;
 mod dock_ui;
 /// Thumbnail textures kept before the least recently used are freed (each is up to 320 px wide).
 const MAX_THUMB_TEXTURES: usize = 512;
@@ -68,6 +70,13 @@ pub static FOSSA_HOSTED: std::sync::atomic::AtomicBool = std::sync::atomic::Atom
 
 pub fn fossa_hosted() -> bool {
     FOSSA_HOSTED.load(std::sync::atomic::Ordering::Relaxed)
+}
+
+/// The egui id of a FilmCraft widget or memory slot. Hosted in Fossa Direct, every id is salted
+/// under "filmcraft" so the desk cannot collide with the host or another desk in the same window.
+#[allow(deprecated)]
+pub fn fid(source: impl std::hash::Hash + std::fmt::Debug) -> egui::Id {
+    if fossa_hosted() { egui::Id::new(("filmcraft", source)) } else { egui::Id::new(source) }
 }
 
 use std::collections::HashMap;
@@ -301,6 +310,9 @@ pub struct FilmcraftApp {
     /// Audio during scrubbing (#211).
     pub scrub: scrub::ScrubAudio,
     pub hooks: HostHooks,
+    /// Keyboard shortcuts and OS file drops act on the editor (false while a host has the pointer
+    /// and focus elsewhere in its window).
+    pub input_active: bool,
     pub dialog: Option<Dialog>,
     pub file_dialogs: panels::file_dialogs::FileDialogState,
     /// The native file dialog the host is showing ([`Self::pick`]).
@@ -340,6 +352,8 @@ pub struct FilmcraftApp {
     /// Screenshots waiting for their frame: (token, path, crop, reply, give-up time).
     pending_screenshots: Vec<(u64, Option<String>, Option<[f32; 4]>, Sender<Value>, f64)>,
     queued_screenshots: Vec<(u64, f64, u32)>,
+    /// Screenshots egui handed back (token, image), collected next frame.
+    shot_inbox: Arc<std::sync::Mutex<Vec<(u64, Arc<egui::ColorImage>)>>>,
     /// A paused monitor drew a stand-in (nearest cached) picture last frame: its exact frame is
     /// still decoding.
     pub(crate) monitor_inexact: bool,
@@ -570,6 +584,7 @@ impl FilmcraftApp {
             scrub: Default::default(),
             hooks: HostHooks::default(),
             // Unsaved changes left by a session that died are offered first thing.
+            input_active: true,
             dialog: recovery.then_some(Dialog::Recovery),
             file_dialogs: Default::default(),
             native_dialog: None,
@@ -590,6 +605,7 @@ impl FilmcraftApp {
             status_seen: (String::new(), 0.0),
             pending_screenshots: Vec::new(),
             queued_screenshots: Vec::new(),
+            shot_inbox: Default::default(),
             monitor_inexact: false,
             monitor_asked: HashMap::new(),
             program_shown: None,
@@ -1725,7 +1741,13 @@ impl FilmcraftApp {
             *frames += 1;
             any = true;
             if now >= *at && *frames >= 3 && (settled || now >= *at + SCREENSHOT_SETTLE_MAX_S) {
-                ctx.send_viewport_cmd(egui::ViewportCommand::Screenshot(egui::UserData::new(*token)));
+                let (inbox, token, c) = (self.shot_inbox.clone(), *token, ctx.clone());
+                ctx.request_screenshot(move |image| {
+                    if let Ok(mut v) = inbox.lock() {
+                        v.push((token, image));
+                    }
+                    c.request_repaint();
+                });
                 false
             } else {
                 true
@@ -1752,19 +1774,7 @@ impl FilmcraftApp {
         if self.pending_screenshots.is_empty() {
             return;
         }
-        let events: Vec<_> = ctx.input(|i| {
-            i.raw
-                .events
-                .iter()
-                .filter_map(|e| match e {
-                    egui::Event::Screenshot { user_data, image, .. } => {
-                        let token = user_data.data.as_ref().and_then(|d| d.downcast_ref::<u64>()).copied()?;
-                        Some((token, image.clone()))
-                    }
-                    _ => None,
-                })
-                .collect()
-        });
+        let events: Vec<_> = self.shot_inbox.lock().map(|mut v| std::mem::take(&mut *v)).unwrap_or_default();
         for (token, image) in events {
             if let Some(i) = self.pending_screenshots.iter().position(|(t, ..)| *t == token) {
                 let (_, path, crop, reply, _) = self.pending_screenshots.remove(i);
@@ -1794,7 +1804,7 @@ impl FilmcraftApp {
         }
         let media = &self.session.prefs.media;
         let (on, every) = (media.refresh_growing_files, f64::from(media.growing_refresh_seconds.max(1)));
-        let (last_key, focus_key) = (egui::Id::new("mediaWatch.lastScan"), egui::Id::new("mediaWatch.focused"));
+        let (last_key, focus_key) = (crate::fid("mediaWatch.lastScan"), crate::fid("mediaWatch.focused"));
         let now = ctx.input(|i| i.time);
         let focused = ctx.input(|i| i.focused);
         let was_focused: bool = ctx.data(|d| d.get_temp(focus_key)).unwrap_or(focused);
@@ -1849,7 +1859,9 @@ impl FilmcraftApp {
             }
         }
         self.sync_timeline_view();
-        self.handle_drops(&ctx);
+        if self.input_active {
+            self.handle_drops(&ctx);
+        }
         if let Some(rx) = self.command_inbox.take() {
             while let Ok(id) = rx.try_recv() {
                 // control-only mode ignores native menu commands, but Quit stays available (#1943)
@@ -1863,7 +1875,9 @@ impl FilmcraftApp {
             self.command_inbox = Some(rx);
         }
         self.begin_press(&ctx);
-        self.handle_shortcuts(&ctx);
+        if self.input_active {
+            self.handle_shortcuts(&ctx);
+        }
         self.sync_native_menu();
         self.advance_playback(&ctx);
         self.advance_source_playback(&ctx);
@@ -1911,7 +1925,7 @@ impl FilmcraftApp {
         }
         let hint = if !self.ui.status.is_empty() { self.ui.status.clone() } else { self.hint_text() };
         ui.painter().text(egui::pos2(sb.min.x + 10.0, sb.center().y), egui::Align2::LEFT_CENTER, hint, Tokens::ui(11.0), t.text_dim);
-        let resp = ui.interact(sb, egui::Id::new("status-bar"), egui::Sense::click());
+        let resp = ui.interact(sb, crate::fid("status-bar"), egui::Sense::click());
         if resp.clicked() {
             self.ui.status.clear();
         }
@@ -1964,7 +1978,7 @@ impl FilmcraftApp {
             Tokens::ui(11.0),
             t.text_dim,
         );
-        let resp = ui.interact(cancel, egui::Id::new(("job-cancel", job.id)), egui::Sense::click());
+        let resp = ui.interact(cancel, crate::fid(("job-cancel", job.id)), egui::Sense::click());
         let c = if resp.hovered() { t.hot_text } else { t.text_dim };
         let k = 3.5;
         p.line_segment([cancel.center() - egui::vec2(k, k), cancel.center() + egui::vec2(k, k)], egui::Stroke::new(1.4, c));
@@ -2033,7 +2047,7 @@ impl FilmcraftApp {
         let Some(msg) = self.ui_error.clone() else { return };
         let mut close = false;
         egui::Window::new(tl!("FilmCraft hit an error"))
-            .id(egui::Id::new("FilmCraft hit an error"))
+            .id(crate::fid("FilmCraft hit an error"))
             .collapsible(false)
             .resizable(false)
             .pivot(egui::Align2::CENTER_CENTER)
@@ -2103,8 +2117,8 @@ impl eframe::App for FilmcraftApp {
             synthesize_mac_ctrl_click(&mut self.mac_ctrl_click_armed, raw_input);
         }
         if self.control_input_only {
-            // Preserve screenshot responses and all viewport lifecycle/geometry metadata.
-            raw_input.events.retain(|event| matches!(event, egui::Event::Screenshot { .. }));
+            // Screenshots arrive by callback; viewport lifecycle/geometry metadata is not an event.
+            raw_input.events.clear();
             raw_input.hovered_files.clear();
             raw_input.dropped_files.clear();
         }
@@ -2169,7 +2183,7 @@ impl eframe::App for FilmcraftApp {
         }
         self.timeline_still = if self.ui.timeline.animating() { 0 } else { self.timeline_still.saturating_add(1) };
         // Quitting with unsaved changes asks to save them first.
-        if ctx.input(|i| i.viewport().close_requested()) && panels::clip_dialogs::intercept_quit(self) {
+        if !fossa_hosted() && ctx.input(|i| i.viewport().close_requested()) && panels::clip_dialogs::intercept_quit(self) {
             ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
         }
         let had_synthetic = !self.synthetic.is_empty();

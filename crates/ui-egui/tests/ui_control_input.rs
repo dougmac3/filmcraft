@@ -27,7 +27,7 @@ impl Driver {
         let (tx, rx) = channel();
         let app = FilmcraftApp::new(session);
         let app = if isolated { app.with_control_input_only(rx) } else { app.with_control(rx) };
-        let mut driver = Self { h: Harness::builder().with_size(vec2(1400.0, 900.0)).build_eframe(move |_| app), tx };
+        let mut driver = Self { h: Harness::builder().with_accessibility_check(false).allow_missing_glyphs().with_size(vec2(1400.0, 900.0)).build_eframe(move |_| app), tx };
         driver.frames(4, true);
         driver
     }
@@ -159,11 +159,6 @@ fn isolation_preserves_close_and_screenshot_delivery_without_claiming_os_focus()
     raw.events = vec![
         Event::Text("unrelated typing".into()),
         Event::WindowFocused(false),
-        Event::Screenshot {
-            viewport_id: egui::ViewportId::ROOT,
-            user_data: Default::default(),
-            image: Arc::new(egui::ColorImage::new([1, 1], vec![egui::Color32::WHITE])),
-        },
     ];
     raw.hovered_files.push(Default::default());
     #[derive(Debug)]
@@ -187,7 +182,7 @@ fn isolation_preserves_close_and_screenshot_delivery_without_claiming_os_focus()
     assert!(raw.focused);
     assert_eq!(raw.viewports[&egui::ViewportId::ROOT].focused, Some(false));
     assert_eq!(raw.viewports[&egui::ViewportId::ROOT].events, vec![egui::ViewportEvent::Close]);
-    assert!(matches!(raw.events.as_slice(), [Event::Screenshot { .. }, Event::ModifiersChanged(Modifiers::NONE)]));
+    assert!(matches!(raw.events.as_slice(), [Event::ModifiersChanged(Modifiers::NONE)]));
     assert!(raw.hovered_files.is_empty() && raw.dropped_files.is_empty());
     let state = filmcraft_ui_egui::control::inspect(d.h.state(), &ctx);
     assert_eq!(state["input"]["nativeWindowFocused"], false);

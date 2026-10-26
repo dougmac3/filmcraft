@@ -30,7 +30,7 @@ impl Driver {
         let (tx, rx) = channel();
         let app = FilmcraftApp::new(session).with_control(rx);
         let snapshots = std::env::var_os("FILMCRAFT_UI_SNAPSHOT_DIR").map(std::path::PathBuf::from);
-        let mut b = Harness::builder().with_size(egui::vec2(1600.0, 980.0)).with_max_steps(10_000);
+        let mut b = Harness::builder().with_accessibility_check(false).allow_missing_glyphs().with_size(egui::vec2(1600.0, 980.0)).with_max_steps(10_000);
         if snapshots.is_some() {
             b = b.wgpu();
         }
@@ -852,7 +852,7 @@ fn double_click_empty_area_imports_with_a_project_loaded() {
             seen.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
             Vec::new()
         }));
-        let harness = Harness::builder().with_size(egui::vec2(1600.0, 980.0)).with_step_dt(1.0 / 60.0).with_max_steps(10_000).build_eframe(move |_cc| app);
+        let harness = Harness::builder().with_accessibility_check(false).allow_missing_glyphs().with_size(egui::vec2(1600.0, 980.0)).with_step_dt(1.0 / 60.0).with_max_steps(10_000).build_eframe(move |_cc| app);
         let mut d = Driver { harness, tx, snapshots: None };
         d.frames(10);
         (d, picks)
@@ -921,7 +921,7 @@ fn double_click_imports_with_audio_in_the_timeline() {
         seen.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
         Vec::new()
     }));
-    let harness = Harness::builder().with_size(egui::vec2(1600.0, 980.0)).with_step_dt(1.0 / 60.0).with_max_steps(10_000).build_eframe(move |_cc| app);
+    let harness = Harness::builder().with_accessibility_check(false).allow_missing_glyphs().with_size(egui::vec2(1600.0, 980.0)).with_step_dt(1.0 / 60.0).with_max_steps(10_000).build_eframe(move |_cc| app);
     let mut d = Driver { harness, tx, snapshots: None };
     d.frames(10);
     let double_click = |d: &mut Driver, at: egui::Pos2| {

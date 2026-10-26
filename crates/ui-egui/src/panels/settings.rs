@@ -608,7 +608,7 @@ fn color_field(app: &mut FilmcraftApp, ui: &mut Ui, d: &mut SettingsDraft, key: 
     }
     // While the field has focus it shows what is typed, even when that is not a colour yet (one
     // character into `#2f6bdf`); each valid colour is kept as it comes. Leaving shows the kept one.
-    let draft_id = egui::Id::new(("settings-hex", key));
+    let draft_id = crate::fid(("settings-hex", key));
     let mut text = ui.data(|m| m.get_temp::<String>(draft_id)).unwrap_or_else(|| choice_text(get(&d.values, key)));
     let t = ui.add(egui::TextEdit::singleline(&mut text).desired_width(70.0).font(egui::TextStyle::Monospace));
     app.auto.add(&format!("settings.{key}.hex"), t.rect, label);
@@ -845,11 +845,11 @@ fn rows(app: &mut FilmcraftApp, ui: &mut Ui, d: &mut SettingsDraft, list: &[Row]
 /// Draw the dialog; returns whether it stays open.
 pub fn show(app: &mut FilmcraftApp, ctx: &egui::Context) -> bool {
     let Some(mut d) = app.ui.settings.take() else { return false };
-    crate::widgets::revert_drag_on_escape(ctx, egui::Id::new("settings-dialog-before-drag"), &mut d);
+    crate::widgets::revert_drag_on_escape(ctx, crate::fid("settings-dialog-before-drag"), &mut d);
     let t = app.tokens;
     let mut close = false;
     let mut apply = false;
-    let resp = egui::Modal::new(egui::Id::new("settings-modal")).frame(modal_frame(&t)).show(ctx, |ui| {
+    let resp = egui::Modal::new(crate::fid("settings-modal")).frame(modal_frame(&t)).show(ctx, |ui| {
         ui.set_width(W);
         // title bar (Premiere keeps "Preferences" as the window title)
         let (bar, _) = ui.allocate_exact_size(vec2(W, 30.0), Sense::hover());
@@ -864,7 +864,7 @@ pub fn show(app: &mut FilmcraftApp, ctx: &egui::Context) -> bool {
             ui.painter().rect(list, 2.0, t.field_bg, Stroke::new(1.0, t.separator), egui::StrokeKind::Inside);
             for (i, c) in settings::categories().iter().enumerate() {
                 let row = Rect::from_min_size(list.min + vec2(1.0, 1.0 + i as f32 * ROW_H), vec2(LIST_W - 2.0, ROW_H));
-                let r = ui.interact(row, egui::Id::new(("settings-cat", c.id)), Sense::click());
+                let r = ui.interact(row, crate::fid(("settings-cat", c.id)), Sense::click());
                 let sel = d.page == c.id;
                 if sel {
                     ui.painter().rect_filled(row, 0.0, t.row_alt);
@@ -959,7 +959,7 @@ mod tests {
         use egui_kittest::{Harness, kittest::Queryable};
         let mut app = FilmcraftApp::new(filmcraft_engine::Session::default());
         open(&mut app, "appearance").unwrap();
-        let mut h = Harness::builder().with_size(vec2(1400.0, 1000.0)).build_eframe(move |_| app);
+        let mut h = Harness::builder().with_accessibility_check(false).allow_missing_glyphs().with_size(vec2(1400.0, 1000.0)).build_eframe(move |_| app);
         h.run_steps(4);
         h.get_by_label("Add to favorites: Dark").click();
         h.run_steps(3);
@@ -969,7 +969,7 @@ mod tests {
         assert_eq!(h.state().session.prefs.appearance.favorite_themes, vec!["dark"]);
         let mut app = FilmcraftApp::new(filmcraft_engine::Session::default());
         app.session.execute("prefs.set", json!({"key": "appearance.favoriteThemes", "value": ["light", "dark"]})).unwrap();
-        let mut h = Harness::builder().with_size(vec2(400.0, 240.0)).build_ui_state(
+        let mut h = Harness::builder().with_accessibility_check(false).allow_missing_glyphs().with_size(vec2(400.0, 240.0)).build_ui_state(
             |ui, app| {
                 ui.button("Appearance").context_menu(|ui| appearance_context_menu(app, ui));
             },

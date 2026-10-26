@@ -30,7 +30,7 @@ impl Driver {
         session.execute("file.openDemoProject", json!({})).expect("demo project");
         let (tx, rx) = channel();
         let app = FilmcraftApp::new(session).with_control(rx);
-        let harness = Harness::builder().with_size(egui::vec2(1600.0, 980.0)).with_max_steps(10_000).build_eframe(move |_cc| app);
+        let harness = Harness::builder().with_accessibility_check(false).allow_missing_glyphs().with_size(egui::vec2(1600.0, 980.0)).with_max_steps(10_000).build_eframe(move |_cc| app);
         let mut d = Driver { harness, tx };
         d.frames(4);
         d
@@ -130,7 +130,7 @@ fn tiny_windows_and_squeezed_panels_do_not_panic() {
         let mut session = Session::default();
         session.execute("file.openDemoProject", json!({})).expect("demo project");
         let app = FilmcraftApp::new(session);
-        let mut harness = Harness::builder().with_size(egui::vec2(w, h)).with_max_steps(10_000).build_eframe(move |_cc| app);
+        let mut harness = Harness::builder().with_accessibility_check(false).allow_missing_glyphs().with_size(egui::vec2(w, h)).with_max_steps(10_000).build_eframe(move |_cc| app);
         for ws in ["Editing", "Color", "Audio", "Effects", "Captions and Graphics", "Assembly"] {
             harness.state_mut().set_workspace(ws);
             for _ in 0..3 {

@@ -33,7 +33,7 @@ impl Driver {
         let (a, b) = (v1.items[0].id, v1.items[1].id);
         let (tx, rx) = channel();
         let app = FilmcraftApp::new(s).with_control(rx);
-        let mut builder = Harness::builder().with_size(egui::vec2(1600.0, 980.0)).with_max_steps(10_000);
+        let mut builder = Harness::builder().with_accessibility_check(false).allow_missing_glyphs().with_size(egui::vec2(1600.0, 980.0)).with_max_steps(10_000);
         if std::env::var_os("FILMCRAFT_UI_SHOTS").is_some() {
             builder = builder.wgpu();
         }

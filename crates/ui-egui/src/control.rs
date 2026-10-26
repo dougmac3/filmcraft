@@ -372,6 +372,7 @@ pub fn handle(app: &mut FilmcraftApp, ctx: &egui::Context, req: &ControlRequest)
                 delta: egui::vec2(dx, dy),
                 modifiers: modifiers(p),
                 phase: egui::TouchPhase::Move,
+                source: egui::MouseWheelSource::Unknown,
             });
             app.synthetic.push(egui::Event::PointerButton {
                 pos: egui::pos2(-100.0, -100.0),

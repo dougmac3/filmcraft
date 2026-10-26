@@ -418,13 +418,21 @@ pub fn font_families() -> Vec<FontFamily> {
 /// craft-fonts, Arabic and Hebrew fallbacks (craft-fonts or installed faces, [`crate::rtl`]) and
 /// egui visuals. Document names keep their glyphs in every interface language.
 pub fn install(ctx: &egui::Context, t: &Tokens) {
-    let mut fonts = FontDefinitions::default();
+    // Hosted in Fossa Direct the fonts are the host's too: start from what is installed and keep
+    // its faces first, adding FilmCraft's after them (and its named families).
+    let hosted = crate::fossa_hosted();
+    let mut fonts = if hosted { ctx.fonts(|f| f.definitions().clone()) } else { FontDefinitions::default() };
     fonts.font_data.insert("inter".into(), Arc::new(FontData::from_static(filmcraft_text::fonts::INTER_REGULAR)));
     fonts.font_data.insert("inter-medium".into(), Arc::new(FontData::from_static(filmcraft_text::fonts::INTER_MEDIUM)));
     fonts.font_data.insert("inter-semibold".into(), Arc::new(FontData::from_static(filmcraft_text::fonts::INTER_SEMIBOLD)));
     fonts.font_data.insert("jbmono".into(), Arc::new(FontData::from_static(filmcraft_text::fonts::JETBRAINS_MONO_REGULAR)));
-    fonts.families.entry(FontFamily::Proportional).or_default().insert(0, "inter".into());
-    fonts.families.entry(FontFamily::Monospace).or_default().insert(0, "jbmono".into());
+    let at = if hosted { usize::MAX } else { 0 };
+    for (family, name) in [(FontFamily::Proportional, "inter"), (FontFamily::Monospace, "jbmono")] {
+        let stack = fonts.families.entry(family).or_default();
+        if !stack.iter().any(|n| n == name) {
+            stack.insert(at.min(stack.len()), name.into());
+        }
+    }
     fonts.families.insert(FontFamily::Name("semibold".into()), vec!["inter-semibold".into(), "inter".into()]);
     fonts.families.insert(FontFamily::Name("medium".into()), vec!["inter-medium".into(), "inter".into()]);
     // Japanese before Chinese: the two share code points, and Japanese text must keep Japanese
@@ -432,6 +440,13 @@ pub fn install(ctx: &egui::Context, t: &Tokens) {
     add_craft_fonts(&mut fonts);
     crate::cjk::install(&mut fonts);
     crate::rtl::install(&mut fonts);
+    if hosted {
+        // installed again on each theme change: keep each face once per family
+        for stack in fonts.families.values_mut() {
+            let mut seen = std::collections::HashSet::new();
+            stack.retain(|n| seen.insert(n.clone()));
+        }
+    }
     ctx.set_fonts(fonts);
     apply_visuals(ctx, t);
 }

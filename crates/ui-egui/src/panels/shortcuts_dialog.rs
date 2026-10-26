@@ -150,8 +150,8 @@ pub fn show(app: &mut FilmcraftApp, ctx: &egui::Context) -> bool {
     let mut close: Option<bool> = None; // Some(true) = OK, Some(false) = Cancel
     let mut open = true;
     egui::Window::new(tl!("Keyboard Shortcuts"))
-        .id(egui::Id::new("Keyboard Shortcuts"))
-        .id(egui::Id::new("keyboard-shortcuts"))
+        .id(crate::fid("Keyboard Shortcuts"))
+        .id(crate::fid("keyboard-shortcuts"))
         .open(&mut open)
         .collapsible(false)
         .resizable(false)
@@ -483,7 +483,7 @@ fn keyboard(app: &mut FilmcraftApp, ui: &mut egui::Ui, area: Rect, t: &Tokens) {
             (true, true) => format!("shortcuts.mod.{}.right", &name[1..]),
             _ => format!("shortcuts.key.{name}"),
         };
-        let resp = ui.interact(r, egui::Id::new(&id), Sense::click());
+        let resp = ui.interact(r, crate::fid(&id), Sense::click());
         let p = ui.painter();
         let base = if is_mod {
             if mod_on { MOD_KEY } else { FREE_KEY.gamma_multiply(0.8) }
@@ -664,7 +664,7 @@ fn command_list(app: &mut FilmcraftApp, ui: &mut egui::Ui, height: f32, t: &Toke
                     .collect::<Vec<_>>()
                     .join(",  ")
             };
-            let cresp = ui.interact(cell, egui::Id::new(("shortcut-cell", &id)), Sense::click());
+            let cresp = ui.interact(cell, crate::fid(("shortcut-cell", &id)), Sense::click());
             if recording {
                 ui.painter().rect(cell, 3.0, t.field_bg, Stroke::new(1.5, t.accent), StrokeKind::Inside);
             } else if cresp.hovered() {
@@ -677,7 +677,7 @@ fn command_list(app: &mut FilmcraftApp, ui: &mut egui::Ui, height: f32, t: &Toke
                 app.shortcut_editor.recording = Some((id.clone(), false));
             }
             let plus = Rect::from_min_size(pos2(r.max.x - 30.0, r.min.y + 3.0), vec2(20.0, 20.0));
-            let presp = ui.interact(plus, egui::Id::new(("shortcut-add", &id)), Sense::click()).on_hover_text(tl!("Add another shortcut"));
+            let presp = ui.interact(plus, crate::fid(("shortcut-add", &id)), Sense::click()).on_hover_text(tl!("Add another shortcut"));
             ui.painter().text(
                 plus.center(),
                 Align2::CENTER_CENTER,

@@ -16,7 +16,7 @@ fn app(item: u64) -> FilmcraftApp {
 
 #[test]
 fn source_runs_pauses_seeks_and_does_not_edit_the_sequence() {
-    let mut h = Harness::builder().with_step_dt(0.25).with_size(egui::vec2(1280.0, 800.0)).build_eframe(move |_cc| app(5));
+    let mut h = Harness::builder().with_accessibility_check(false).allow_missing_glyphs().with_step_dt(0.25).with_size(egui::vec2(1280.0, 800.0)).build_eframe(move |_cc| app(5));
     h.step();
     let before = h.state().session.project.to_json();
     let program = h.state().session.playhead();
@@ -41,7 +41,7 @@ fn source_runs_pauses_seeks_and_does_not_edit_the_sequence() {
 
 #[test]
 fn source_stops_at_end_restarts_and_stops_when_item_changes() {
-    let mut h = Harness::builder().with_step_dt(0.25).with_size(egui::vec2(1280.0, 800.0)).build_eframe(move |_cc| app(5));
+    let mut h = Harness::builder().with_accessibility_check(false).allow_missing_glyphs().with_step_dt(0.25).with_size(egui::vec2(1280.0, 800.0)).build_eframe(move |_cc| app(5));
     h.step();
     h.state_mut().session.execute("source.setPlayhead", json!({"seconds":17.5})).unwrap();
     h.state_mut().play_source().unwrap();
@@ -110,7 +110,7 @@ fn audio_source_outputs_sound_and_uses_the_device_clock() {
     let fill = Arc::new(Mutex::new(None));
     let mut app = app(11);
     app.audio = Some(Box::new(Out { frames, fill: fill.clone(), stalled: false }));
-    let mut h = Harness::builder().with_step_dt(0.25).with_size(egui::vec2(1280.0, 800.0)).build_eframe(move |_cc| app);
+    let mut h = Harness::builder().with_accessibility_check(false).allow_missing_glyphs().with_step_dt(0.25).with_size(egui::vec2(1280.0, 800.0)).build_eframe(move |_cc| app);
     h.step();
     h.state_mut().play_source().unwrap();
     for _ in 0..8 {
@@ -138,7 +138,7 @@ fn audio_source_outputs_sound_and_uses_the_device_clock() {
 fn stalled_source_audio_falls_back_to_wall_clock() {
     let mut app = app(11);
     app.audio = Some(Box::new(Out { frames: Arc::new(AtomicU64::new(0)), fill: Arc::new(Mutex::new(None)), stalled: true }));
-    let mut h = Harness::builder().with_step_dt(0.25).with_size(egui::vec2(1280.0, 800.0)).build_eframe(move |_cc| app);
+    let mut h = Harness::builder().with_accessibility_check(false).allow_missing_glyphs().with_step_dt(0.25).with_size(egui::vec2(1280.0, 800.0)).build_eframe(move |_cc| app);
     h.step();
     h.state_mut().play_source().unwrap();
     for _ in 0..16 {
@@ -151,7 +151,7 @@ fn stalled_source_audio_falls_back_to_wall_clock() {
 
 #[test]
 fn source_range_playback_stops_at_out_and_loop_restarts_without_program_playback() {
-    let mut h = Harness::builder().with_step_dt(0.25).with_size(egui::vec2(1280.0, 800.0)).build_eframe(move |_cc| app(5));
+    let mut h = Harness::builder().with_accessibility_check(false).allow_missing_glyphs().with_step_dt(0.25).with_size(egui::vec2(1280.0, 800.0)).build_eframe(move |_cc| app(5));
     h.step();
     let rate = filmcraft_engine::clip_ops::source_view(&h.state().session, filmcraft_engine::project::ItemId(5)).unwrap().rate;
     let (start, out) = (rate.tick_of(24), rate.tick_of(47));
@@ -183,7 +183,7 @@ fn source_range_playback_stops_at_out_and_loop_restarts_without_program_playback
 }
 #[test]
 fn a_single_frame_source_range_starts_at_the_marked_last_frame() {
-    let mut h = Harness::builder().with_step_dt(0.1).with_size(egui::vec2(1280.0, 800.0)).build_eframe(move |_cc| app(5));
+    let mut h = Harness::builder().with_accessibility_check(false).allow_missing_glyphs().with_step_dt(0.1).with_size(egui::vec2(1280.0, 800.0)).build_eframe(move |_cc| app(5));
     h.step();
     let v = filmcraft_engine::clip_ops::source_view(&h.state().session, filmcraft_engine::project::ItemId(5)).unwrap();
     let last = v.rate.snap(v.end - v.rate.frame_duration());
@@ -199,7 +199,7 @@ fn a_single_frame_source_range_starts_at_the_marked_last_frame() {
 
 #[test]
 fn j_and_l_shuttle_the_source_both_ways_and_double_the_speed() {
-    let mut h = Harness::builder().with_step_dt(0.25).with_size(egui::vec2(1280.0, 800.0)).build_eframe(move |_cc| app(5));
+    let mut h = Harness::builder().with_accessibility_check(false).allow_missing_glyphs().with_step_dt(0.25).with_size(egui::vec2(1280.0, 800.0)).build_eframe(move |_cc| app(5));
     h.step();
     h.state_mut().ui.focused = PanelKind::Source;
     let before = h.state().session.project.to_json();

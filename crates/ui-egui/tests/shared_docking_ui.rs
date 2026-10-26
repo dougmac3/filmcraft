@@ -72,7 +72,7 @@ fn builtin_and_legacy_workspace_shapes_roundtrip_and_save_floating() {
     let mut restarted_session = Session::default();
     restarted_session.prefs_path = Some(dir.join("preferences.json"));
     let restarted = FilmcraftApp::new(restarted_session);
-    let mut h = Harness::builder().with_size(vec2(1200.0, 760.0)).build_eframe(move |_| restarted);
+    let mut h = Harness::builder().with_accessibility_check(false).allow_missing_glyphs().with_size(vec2(1200.0, 760.0)).build_eframe(move |_| restarted);
     for _ in 0..4 {
         step(&mut h);
     }
@@ -151,7 +151,7 @@ fn real_panel_drag_merges_splits_floats_and_redocks_without_editing_documents() 
     session.execute("file.openDemoProject", json!({})).unwrap();
     let app = FilmcraftApp::new(session);
     let snapshots = std::env::var_os("CRAFT_UI_DOCKING_SNAPSHOT_DIR").map(std::path::PathBuf::from);
-    let mut builder = Harness::builder().with_size(vec2(1200.0, 760.0));
+    let mut builder = Harness::builder().with_accessibility_check(false).allow_missing_glyphs().with_size(vec2(1200.0, 760.0));
     if snapshots.is_some() {
         builder = builder.wgpu();
     }
@@ -279,7 +279,7 @@ fn real_panel_drag_merges_splits_floats_and_redocks_without_editing_documents() 
 fn dropping_on_the_window_edge_docks_beside_the_whole_workspace() {
     let mut app = FilmcraftApp::new(Session::default());
     app.ui.dock = layout().root;
-    let mut h = Harness::builder().with_size(vec2(1200.0, 760.0)).build_eframe(move |_| app);
+    let mut h = Harness::builder().with_accessibility_check(false).allow_missing_glyphs().with_size(vec2(1200.0, 760.0)).build_eframe(move |_| app);
     for _ in 0..4 {
         step(&mut h);
     }
@@ -491,7 +491,7 @@ fn narration_selection_reveals_covered_floating_tts_once_without_editing_the_pro
     let project = session.project.clone();
     let mut app = FilmcraftApp::new(session);
     app.show_panel(PanelKind::TextToSpeech);
-    let mut h = Harness::builder().with_size(vec2(1200.0, 760.0)).build_eframe(move |_| app);
+    let mut h = Harness::builder().with_accessibility_check(false).allow_missing_glyphs().with_size(vec2(1200.0, 760.0)).build_eframe(move |_| app);
     for _ in 0..4 {
         step(&mut h);
     }

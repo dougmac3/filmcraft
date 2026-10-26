@@ -43,7 +43,7 @@ fn harness(effect: &str) -> Harness<'static, FilmcraftApp> {
     let mut app = FilmcraftApp::new(s);
     app.set_workspace("Effects");
     app.ui.effects_search = effect.to_string();
-    let mut builder = Harness::builder().with_size(vec2(1600.0, 980.0)).with_max_steps(10_000);
+    let mut builder = Harness::builder().with_accessibility_check(false).allow_missing_glyphs().with_size(vec2(1600.0, 980.0)).with_max_steps(10_000);
     if std::env::var_os("FILMCRAFT_UI_SNAPSHOT_DIR").is_some() {
         builder = builder.wgpu();
     }

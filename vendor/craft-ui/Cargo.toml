@@ -1,0 +1,24 @@
+# craft-ui from storytold/craft-libs rev 5c874d51eeb3de70e735c8ce87a59a7dedd47675, vendored to move
+# it to egui 0.37 with the rest of the workspace (Fossa Direct hosts FilmCraft on egui 0.37).
+[package]
+name = "craft-ui"
+version = "0.1.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+rust-version = "1.95"
+repository = "https://github.com/storytold/craft-libs"
+description = "Reusable egui controls and icon catalogs for Craft frontends"
+
+[dependencies]
+egui = { workspace = true }
+serde = { version = "1", features = ["derive"], optional = true }
+
+[features]
+serde = ["dep:serde"]
+
+[dev-dependencies]
+egui = { workspace = true, features = ["default_fonts"] }
+serde_json = "1"
+egui_extras = { version = "0.37", default-features = false, features = ["svg"] }
+egui_kittest = { workspace = true, features = ["wgpu"] }
+image = { version = "0.25", default-features = false, features = ["png"] }

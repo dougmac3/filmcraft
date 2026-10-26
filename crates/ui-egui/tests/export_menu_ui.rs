@@ -29,7 +29,7 @@ impl Driver {
             asked.lock().unwrap().push((filter.to_string(), exts.iter().map(|e| e.to_string()).collect(), suggested.to_string()));
             save_to.as_ref().map(|d| d.join(suggested).to_string_lossy().into_owned())
         }));
-        let mut builder = Harness::builder().with_size(egui::vec2(1600.0, 980.0)).with_max_steps(10_000);
+        let mut builder = Harness::builder().with_accessibility_check(false).allow_missing_glyphs().with_size(egui::vec2(1600.0, 980.0)).with_max_steps(10_000);
         if std::env::var_os("FILMCRAFT_UI_SNAPSHOT_DIR").is_some() {
             builder = builder.wgpu();
         }

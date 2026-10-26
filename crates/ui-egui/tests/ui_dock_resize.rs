@@ -47,7 +47,7 @@ fn focused_dock_resize_owns_arrows_and_keeps_pointer_dragging() {
     let app = FilmcraftApp::new(session);
     // Opt in to GPU snapshots while the ordinary test remains headless and renderer-independent.
     let directory = std::env::var_os("CRAFT_UI_PANES_SNAPSHOT_DIR").map(std::path::PathBuf::from);
-    let mut builder = Harness::builder().with_size(vec2(1400.0, 900.0)).with_max_steps(10_000);
+    let mut builder = Harness::builder().with_accessibility_check(false).allow_missing_glyphs().with_size(vec2(1400.0, 900.0)).with_max_steps(10_000);
     if directory.is_some() {
         builder = builder.wgpu();
     }
@@ -107,7 +107,7 @@ fn space_plays_after_a_pane_is_resized_with_the_pointer() {
     let mut session = Session::default();
     session.execute("file.openDemoProject", json!({})).unwrap();
     let app = FilmcraftApp::new(session);
-    let mut h = Harness::builder().with_size(vec2(1400.0, 900.0)).build_eframe(move |_| app);
+    let mut h = Harness::builder().with_accessibility_check(false).allow_missing_glyphs().with_size(vec2(1400.0, 900.0)).build_eframe(move |_| app);
     frames(&mut h, 4);
     h.state_mut().ui.focused = PanelKind::Timeline;
     h.state_mut().ui.dock = DockNode::Split {

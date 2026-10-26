@@ -153,7 +153,9 @@ pub fn route(app: &mut FilmcraftApp, ctx: &egui::Context, id: &str, params: &Val
         }
         "window.toggleFullScreen" => {
             let fs = !ctx.input(|i| i.viewport().fullscreen.unwrap_or(false));
-            ctx.send_viewport_cmd(egui::ViewportCommand::Fullscreen(fs));
+            if !crate::fossa_hosted() {
+                ctx.send_viewport_cmd(egui::ViewportCommand::Fullscreen(fs));
+            }
             Ok(json!({"fullScreen": fs}))
         }
         "window.nextPanel" | "window.prevPanel" => Ok(cycle_panel(app, id == "window.nextPanel")),
@@ -214,7 +216,9 @@ pub fn route(app: &mut FilmcraftApp, ctx: &egui::Context, id: &str, params: &Val
             Ok(json!({"url": HELP_URL}))
         }
         "app.quit" => {
-            ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+            if !crate::fossa_hosted() {
+                ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+            }
             Ok(Value::Null)
         }
         _ if id.starts_with("projectPanel.") => match crate::panels::project::route(app, ctx, &id["projectPanel.".len()..], params) {
@@ -278,7 +282,7 @@ fn focus_find_box(app: &mut FilmcraftApp, ctx: &egui::Context) -> Value {
     let p = app.ui.focused;
     let rect =
         app.auto.find(&format!("panel.{}", p.id())).map(|e| egui::Rect::from_min_size(egui::pos2(e.rect[0], e.rect[1]), egui::vec2(e.rect[2], e.rect[3])));
-    ctx.data_mut(|d| d.insert_temp(egui::Id::new(FOCUS_SEARCH), rect.unwrap_or(egui::Rect::EVERYTHING)));
+    ctx.data_mut(|d| d.insert_temp(crate::fid(FOCUS_SEARCH), rect.unwrap_or(egui::Rect::EVERYTHING)));
     json!({"panel": p.title()})
 }
 
@@ -287,7 +291,7 @@ pub const FOCUS_SEARCH: &str = "fc-focus-search";
 
 /// Called by search fields: take focus when Select Find Box targets the panel they sit in.
 pub fn take_search_focus(ui: &egui::Ui, field: egui::Rect, resp: &egui::Response) {
-    let id = egui::Id::new(FOCUS_SEARCH);
+    let id = crate::fid(FOCUS_SEARCH);
     let Some(panel) = ui.ctx().data(|d| d.get_temp::<egui::Rect>(id)) else { return };
     if panel.contains(field.center()) {
         resp.request_focus();

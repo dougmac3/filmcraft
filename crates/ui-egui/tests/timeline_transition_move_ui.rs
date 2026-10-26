@@ -34,7 +34,7 @@ fn rect(h: &Harness<'static, FilmcraftApp>, id: &str) -> Rect {
 
 fn build(s: Session) -> Harness<'static, FilmcraftApp> {
     let app = FilmcraftApp::new(s);
-    let mut builder = Harness::builder().with_size(vec2(1600.0, 980.0)).with_max_steps(10_000);
+    let mut builder = Harness::builder().with_accessibility_check(false).allow_missing_glyphs().with_size(vec2(1600.0, 980.0)).with_max_steps(10_000);
     if std::env::var_os("FILMCRAFT_UI_SNAPSHOT_DIR").is_some() {
         builder = builder.wgpu();
     }

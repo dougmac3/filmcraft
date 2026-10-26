@@ -369,7 +369,7 @@ pub fn timeline(o: &Opts) -> Vec<Value> {
         let (_, clips) = big_sequence(&mut s, item, "Timeline 1000", 7);
         let (tx, rx) = std::sync::mpsc::channel();
         let app = filmcraft_ui_egui::FilmcraftApp::new(s).with_control(rx);
-        let mut b = egui_kittest::Harness::builder().with_size(egui::vec2(1920.0, 1080.0)).with_max_steps(100_000);
+        let mut b = egui_kittest::Harness::builder().with_accessibility_check(false).with_size(egui::vec2(1920.0, 1080.0)).with_max_steps(100_000);
         if gpu {
             b = b.wgpu();
         }

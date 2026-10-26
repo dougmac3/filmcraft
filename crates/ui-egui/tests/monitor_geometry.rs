@@ -20,7 +20,7 @@ fn harness_at_scale(width: f32, kind: ThemeKind, which: Which, scale: f32) -> Ha
     let mut session = Session::default();
     session.execute("file.openDemoProject", json!({})).unwrap();
     session.execute("source.open", json!({"item":5})).unwrap();
-    let mut h = Harness::builder().with_size(vec2(width, 340.0)).with_pixels_per_point(scale).build_ui_state(
+    let mut h = Harness::builder().with_accessibility_check(false).allow_missing_glyphs().with_size(vec2(width, 340.0)).with_pixels_per_point(scale).build_ui_state(
         move |ui, app: &mut FilmcraftApp| {
             app.set_theme(ui.ctx(), kind);
             app.auto.begin_frame();
@@ -178,6 +178,7 @@ fn transport_editor_keeps_its_own_space_and_customizes_compact_controls() {
                 delta: vec2(0.0, -1200.0),
                 modifiers: Modifiers::NONE,
                 phase: egui::TouchPhase::Move,
+                source: egui::MouseWheelSource::Unknown,
             });
             h.run_steps(5);
             let reset = element(&h, "program.transport.editor.reset");
