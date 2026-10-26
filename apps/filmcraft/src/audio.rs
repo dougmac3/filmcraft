@@ -102,7 +102,7 @@ fn fallback_rank(name: &str) -> u8 {
 fn output_device(h: &cpal::Host, name: &str, cache: &Mutex<Option<(String, String)>>) -> Option<DeviceChoice> {
     if !name.is_empty()
         && let Ok(mut devs) = h.output_devices()
-        && let Some(d) = devs.find(|d| d.name().is_ok_and(|n| n == name))
+        && let Some(d) = devs.find(|d| d.description().is_ok_and(|x| x.name() == name))
     {
         return Some(DeviceChoice { device: d, fallback: None });
     }
@@ -113,7 +113,7 @@ fn output_device(h: &cpal::Host, name: &str, cache: &Mutex<Option<(String, Strin
     }
     let host_name = h.id().name().to_string();
     let mut cache = cache.lock().unwrap_or_else(PoisonError::into_inner);
-    let mut devs: Vec<(String, cpal::Device)> = h.output_devices().ok()?.filter_map(|d| d.name().ok().map(|n| (n, d))).collect();
+    let mut devs: Vec<(String, cpal::Device)> = h.output_devices().ok()?.filter_map(|d| d.description().ok().map(|x| (x.name().to_string(), d))).collect();
     if let Some((cached_host, cached)) = cache.as_ref()
         && *cached_host == host_name
         && let Some(i) = devs.iter().position(|(n, _)| n == cached)
@@ -148,7 +148,7 @@ impl CpalOut {
             health: Arc::new(Health::default()),
             watchdog: Watchdog::default(),
             epoch: Instant::now(),
-            rate: cfg.as_ref().map_or(48_000, |c| c.sample_rate().0),
+            rate: cfg.as_ref().map_or(48_000, |c| c.sample_rate()),
             channels: cfg.as_ref().map_or(2, |c| c.channels()),
             hw: AudioHardwarePrefs::default(),
             document_rate: None,
@@ -162,16 +162,16 @@ impl CpalOut {
         let default = dev.default_output_config().map_err(|e| e.to_string())?;
         let want = if self.hw.force_document_rate { self.document_rate.unwrap_or(self.hw.sample_rate) } else { self.hw.sample_rate };
         let exact = dev.supported_output_configs().ok().and_then(|it| {
-            it.filter(|c| c.channels() > 0 && (c.min_sample_rate().0..=c.max_sample_rate().0).contains(&want))
+            it.filter(|c| c.channels() > 0 && (c.min_sample_rate()..=c.max_sample_rate()).contains(&want))
                 .max_by_key(|c| {
                     (c.channels() == default.channels(), c.sample_format() == cpal::SampleFormat::F32, c.sample_format() == default.sample_format())
                 })
-                .and_then(|c| c.try_with_sample_rate(cpal::SampleRate(want)))
+                .and_then(|c| c.try_with_sample_rate(want))
         });
         Ok(exact.unwrap_or(default))
     }
 
-    fn converted_stream<T>(&self, dev: &cpal::Device, config: &cpal::StreamConfig, fill: Arc<Mutex<Fill>>) -> Result<cpal::Stream, cpal::BuildStreamError>
+    fn converted_stream<T>(&self, dev: &cpal::Device, config: &cpal::StreamConfig, fill: Arc<Mutex<Fill>>) -> Result<cpal::Stream, cpal::Error>
     where
         T: cpal::SizedSample + cpal::FromSample<f32>,
     {
@@ -181,7 +181,7 @@ impl CpalOut {
         let error_health = health.clone();
         let mut scratch = Vec::new();
         dev.build_output_stream(
-            config,
+            *config,
             move |buf: &mut [T], _| {
                 // Reuse the conversion buffer. A pathological driver buffer must not panic the audio thread.
                 if buf.len() > 1_048_576 || scratch.try_reserve(buf.len().saturating_sub(scratch.len())).is_err() {
@@ -208,13 +208,13 @@ impl CpalOut {
         self.note = fallback;
         let cfg = self.config(&dev)?;
         let channels = cfg.channels() as usize;
-        if channels == 0 || cfg.sample_rate().0 == 0 {
+        if channels == 0 || cfg.sample_rate() == 0 {
             return Err("the output device returned an invalid channel count or sample rate".into());
         }
         if let Some((rate, ch)) = expect
-            && (rate, ch) != (cfg.sample_rate().0, cfg.channels())
+            && (rate, ch) != (cfg.sample_rate(), cfg.channels())
         {
-            return Err(format!("the output device now runs at {} Hz with {} channels", cfg.sample_rate().0, cfg.channels()));
+            return Err(format!("the output device now runs at {} Hz with {} channels", cfg.sample_rate(), cfg.channels()));
         }
         let mut config: cpal::StreamConfig = cfg.clone().into();
         if let cpal::SupportedBufferSize::Range { min, max } = cfg.buffer_size()
@@ -222,7 +222,7 @@ impl CpalOut {
         {
             config.buffer_size = cpal::BufferSize::Fixed(self.hw.buffer_size);
         }
-        self.rate = cfg.sample_rate().0;
+        self.rate = cfg.sample_rate();
         self.channels = cfg.channels();
         let stream = match cfg.sample_format() {
             cpal::SampleFormat::F32 => {
@@ -230,7 +230,7 @@ impl CpalOut {
                 let health = self.health.clone();
                 let error_health = health.clone();
                 dev.build_output_stream(
-                    &config,
+                    config,
                     move |buf: &mut [f32], _| render(&fill, buf, channels, &played, &health),
                     move |e| stream_error(&error_health, e),
                     None,
@@ -363,10 +363,12 @@ fn render(fill: &Mutex<Fill>, buf: &mut [f32], channels: usize, played: &AtomicU
     played.fetch_add((buf.len() / channels.max(1)) as u64, Ordering::SeqCst);
 }
 
-fn stream_error(health: &Health, e: cpal::StreamError) {
-    match e {
-        cpal::StreamError::DeviceNotAvailable => health.lost.store(true, Ordering::SeqCst),
-        cpal::StreamError::BackendSpecific { .. } => health.errored.store(true, Ordering::SeqCst),
+fn stream_error(health: &Health, e: cpal::Error) {
+    match e.kind() {
+        cpal::ErrorKind::DeviceNotAvailable => health.lost.store(true, Ordering::SeqCst),
+        // the stream keeps running through these: an xrun, an automatic reroute, no realtime priority
+        cpal::ErrorKind::Xrun | cpal::ErrorKind::DeviceChanged | cpal::ErrorKind::RealtimeDenied => {}
+        _ => health.errored.store(true, Ordering::SeqCst),
     }
     if !health.reported.swap(true, Ordering::SeqCst) {
         eprintln!("filmcraft: audio stream error: {e}");
@@ -429,8 +431,8 @@ impl AudioOut for CpalOut {
     }
     fn devices(&self) -> AudioDevices {
         let h = host(&self.hw.device_class);
-        let outputs = h.output_devices().map(|d| d.filter_map(|x| x.name().ok()).collect()).unwrap_or_default();
-        let inputs = h.input_devices().map(|d| d.filter_map(|x| x.name().ok()).collect()).unwrap_or_default();
+        let outputs = h.output_devices().map(|d| d.filter_map(|x| x.description().ok().map(|x| x.name().to_string())).collect()).unwrap_or_default();
+        let inputs = h.input_devices().map(|d| d.filter_map(|x| x.description().ok().map(|x| x.name().to_string())).collect()).unwrap_or_default();
         let output_channels =
             output_device(&h, &self.hw.default_output, &self.fallback).and_then(|c| self.config(&c.device).ok()).map(|cfg| cfg.channels()).unwrap_or(0);
         AudioDevices { hosts: cpal::available_hosts().iter().map(|h| h.name().to_string()).collect(), inputs, outputs, output_channels }
@@ -443,7 +445,7 @@ impl AudioOut for CpalOut {
         if let Some(choice) = output_device(&host, &self.hw.default_output, &self.fallback)
             && let Ok(cfg) = self.config(&choice.device)
         {
-            self.rate = cfg.sample_rate().0;
+            self.rate = cfg.sample_rate();
             self.channels = cfg.channels();
             self.note = choice.fallback;
         }
@@ -491,9 +493,11 @@ mod tests {
     #[test]
     fn stream_errors_ask_for_a_restart_instead_of_failing_playback() {
         let health = Health::default();
-        stream_error(&health, cpal::StreamError::BackendSpecific { err: cpal::BackendSpecificError { description: "`alsa::poll()` returned POLLERR".into() } });
+        stream_error(&health, cpal::Error::new(cpal::ErrorKind::Xrun));
+        assert!(!health.errored.load(Ordering::SeqCst) && !health.lost.load(Ordering::SeqCst), "an xrun needs no restart");
+        stream_error(&health, cpal::Error::with_message(cpal::ErrorKind::BackendError, "`alsa::poll()` returned POLLERR"));
         assert!(health.errored.load(Ordering::SeqCst) && !health.lost.load(Ordering::SeqCst));
-        stream_error(&health, cpal::StreamError::DeviceNotAvailable);
+        stream_error(&health, cpal::Error::new(cpal::ErrorKind::DeviceNotAvailable));
         assert!(health.lost.load(Ordering::SeqCst));
         assert!(!health.failed.load(Ordering::SeqCst), "a stream error alone must not silence playback");
         let output = CpalOut::new();
