@@ -140,11 +140,23 @@ pub struct Desk {
     /// The desk's input as it stood after its last turn: the next turn's input is built on it, so
     /// the desk's pointer, clicks and drags run on their own state inside its own rect.
     input: Option<egui::InputState>,
+    /// The render [`Self::start_render`] started, until [`Self::poll_render`] hands it over.
+    render: Option<Render>,
 }
 
 /// How long [`Desk::render_clip`] waits for its export.
 // ponytail: one fixed wait whatever the cut's length; scale it with the duration if long cuts are rendered
 pub const RENDER_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(300);
+
+const RENDER_NAME: &str = "cut.mp4";
+
+/// A render [`Desk::start_render`] started: the export job's progress and result, its file.
+struct Render {
+    progress: Arc<filmcraft_export::Progress>,
+    result: Arc<Mutex<Option<Result<filmcraft_export::Report, String>>>>,
+    path: String,
+    until: std::time::Instant,
+}
 
 /// The project as it stood at [`Desk::edit_mark`]; holding it keeps that project alive, so
 /// [`Desk::edited_since`] compares the very same one.
@@ -236,7 +248,7 @@ impl Desk {
         app.hooks.pick_open_file =
             Some(Box::new(|filter: &str, exts: &[&str]| rfd::FileDialog::new().add_filter(filter, exts).pick_file().map(|p| p.to_string_lossy().into_owned())));
         ctx.request_repaint();
-        Self { app, ctx: ctx.clone(), files, folder, opened: 0, roots, look: None, focused: false, input: None }
+        Self { app, ctx: ctx.clone(), files, folder, opened: 0, roots, look: None, focused: false, input: None, render: None }
     }
 
     /// The desk's own folder (None when it could not be made): the agent may read and write in
@@ -311,39 +323,70 @@ impl Desk {
     /// sound, (file name, bytes), for Fossa to keep as a take. The editor's own exporter encodes
     /// it (its built-in H.264 and AAC encoders, no ffmpeg) in memory; nothing stays in the desk's
     /// folder and nothing is handed out by [`Self::take_saved`]. None when no sequence is open.
-    /// Waits for the export, up to [`RENDER_TIMEOUT`] (then cancels it).
+    /// Blocks until the export is done, up to [`RENDER_TIMEOUT`] (then cancels it); a host with
+    /// one UI thread uses [`Self::start_render`] and [`Self::poll_render`] instead.
     pub fn render_clip(&mut self) -> Result<Option<(String, Vec<u8>)>, String> {
-        let s = &mut self.app.session;
-        if s.state.active_sequence.is_none() {
+        if !self.start_render()? {
             return Ok(None);
         }
-        let name = "cut.mp4";
+        loop {
+            if let Some(r) = self.poll_render() {
+                return r.map(Some);
+            }
+            std::thread::sleep(std::time::Duration::from_millis(20));
+        }
+    }
+
+    /// Start [`Self::render_clip`]'s export without waiting: false when no sequence is open. It
+    /// runs on the exporter's own thread, whether or not the desk is drawn; the project is taken
+    /// as it stands now, so later edits do not reach it. One render at a time.
+    pub fn start_render(&mut self) -> Result<bool, String> {
+        if self.render.is_some() {
+            return Err("a render is already running".into());
+        }
+        let s = &mut self.app.session;
+        if s.state.active_sequence.is_none() {
+            return Ok(false);
+        }
         let dir = self.folder.as_ref().ok_or("the desk has no folder for files")?.join("render");
-        let path = dir.join(name).to_string_lossy().into_owned();
+        let path = dir.join(RENDER_NAME).to_string_lossy().into_owned();
         let v = s
             .execute("file.exportMedia", json!({"path": path, "format": "h264", "audio": true, "range": "inOut", "wait": false}))
             .map_err(|e| e.to_string())?;
         let path = v["path"].as_str().unwrap_or(&path).to_string();
         let job = s.jobs.iter().find(|j| Some(j.id) == v["job"].as_u64()).ok_or("the export did not start")?;
-        let (progress, result) = (job.progress.clone(), job.result.clone());
-        let until = std::time::Instant::now() + RENDER_TIMEOUT;
-        let done = loop {
-            if let Some(r) = result.lock().map_err(|_| "poisoned")?.take() {
-                break r;
+        self.render = Some(Render { progress: job.progress.clone(), result: job.result.clone(), path, until: std::time::Instant::now() + RENDER_TIMEOUT });
+        Ok(true)
+    }
+
+    /// The render [`Self::start_render`] started: None while it runs (or when none was started),
+    /// then its (file name, bytes) or why it failed, once; after [`RENDER_TIMEOUT`] it is
+    /// cancelled and fails. The bytes go to the caller only, not to [`Self::take_saved`].
+    pub fn poll_render(&mut self) -> Option<Result<(String, Vec<u8>), String>> {
+        let r = self.render.as_ref()?;
+        let done = match r.result.lock().ok().and_then(|mut x| x.take()) {
+            Some(d) => d,
+            None if std::time::Instant::now() > r.until => {
+                r.progress.cancel.store(true, Ordering::Relaxed);
+                Err(format!("took longer than {} s and was stopped", RENDER_TIMEOUT.as_secs()))
             }
-            if std::time::Instant::now() > until {
-                progress.cancel.store(true, Ordering::Relaxed);
-                break Err(format!("the render took longer than {} s and was stopped", RENDER_TIMEOUT.as_secs()));
-            }
-            std::thread::sleep(std::time::Duration::from_millis(20));
+            None => return None,
         };
-        let bytes = self.files.written.lock().ok().and_then(|mut w| w.remove(&path));
+        let r = self.render.take()?;
+        let bytes = self.files.written.lock().ok().and_then(|mut w| w.remove(&r.path));
         if let Ok(mut saved) = self.files.saved.lock() {
-            saved.retain(|(n, _)| n != name);
+            saved.retain(|(n, _)| n != RENDER_NAME);
         }
-        let _ = std::fs::remove_file(&path);
-        done.map_err(|e| format!("render failed: {e}"))?;
-        bytes.filter(|b| !b.is_empty()).map(|b| Some((name.to_string(), b))).ok_or_else(|| "the render wrote no file".to_string())
+        let _ = std::fs::remove_file(&r.path);
+        Some(match done {
+            Err(e) => Err(format!("render failed: {e}")),
+            Ok(_) => bytes.filter(|b| !b.is_empty()).map(|b| (RENDER_NAME.to_string(), b)).ok_or_else(|| "the render wrote no file".to_string()),
+        })
+    }
+
+    /// How far the running render is, 0..1 (frames encoded of all); None when none is running.
+    pub fn render_progress(&self) -> Option<f32> {
+        self.render.as_ref().map(|r| r.progress.fraction().clamp(0.0, 1.0))
     }
 
     /// A number that changes with every change to the project (an edit, an undo, a redo, a file

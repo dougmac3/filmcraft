@@ -163,8 +163,21 @@ fn fossa_desk() {
     exec(&mut h, "edit.redo", json!({}));
     assert!(h.state().desk.edited_since(&mark));
     // the trimmed cut rendered as an MP4, as long as the sequence
+    // without waiting, and with the desk not drawn meanwhile (the card closed): the exporter's
+    // thread carries it on its own
     let t0 = std::time::Instant::now();
-    let (name, mp4) = h.state_mut().desk.render_clip().unwrap().expect("a sequence is open");
+    assert!(h.state_mut().desk.start_render().unwrap(), "a sequence is open");
+    assert!(h.state_mut().desk.start_render().is_err(), "one render at a time");
+    let mut seen = Vec::new();
+    let (name, mp4) = loop {
+        if let Some(r) = h.state_mut().desk.poll_render() {
+            break r.unwrap();
+        }
+        seen.push(h.state().desk.render_progress().expect("running"));
+        std::thread::sleep(std::time::Duration::from_millis(100));
+    };
+    assert!(h.state_mut().desk.poll_render().is_none() && h.state().desk.render_progress().is_none(), "handed over once");
+    assert!(seen.iter().any(|f| *f > 0.0 && *f < 1.0), "progress {seen:?}");
     println!("{name}: {} bytes in {:.1} s", mp4.len(), t0.elapsed().as_secs_f64());
     assert!(mp4.len() > 1000 && &mp4[4..8] == b"ftyp", "an MP4");
     let secs = mp4_seconds(&mp4);
