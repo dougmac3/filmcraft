@@ -139,6 +139,7 @@ impl FileReader {
     }
 
     pub(crate) fn open_in(path: &std::path::Path, pool: &Arc<FilePool>) -> io::Result<Self> {
+        crate::file_access::io_read(&path.to_string_lossy())?;
         let file = std::fs::File::open(path)?;
         let m = file.metadata()?;
         if !m.is_file() {

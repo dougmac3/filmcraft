@@ -197,6 +197,7 @@ pub fn run(s: &mut Session, p: &Value) -> Result<Value> {
     if Path::new(&project_path).exists() && !bool_p(p, "overwrite").unwrap_or(false) {
         return Err(EngineError::Other(format!("{project_path} already exists")));
     }
+    crate::file_access::check_write(&dest_dir.to_string_lossy()).map_err(EngineError::Other)?;
     std::fs::create_dir_all(&dest_dir).map_err(|e| EngineError::Other(format!("{dest}: {e}")))?;
 
     // ---- the job
@@ -268,6 +269,11 @@ fn execute(
             return Err("cancelled".into());
         }
         *prog.status.lock().unwrap_or_else(|e| e.into_inner()) = format!("{}", Path::new(&w.out).file_name().map(|n| n.to_string_lossy()).unwrap_or_default());
+        // the job runs in the scope of the command that started it (export_tools::guard_job)
+        crate::file_access::check_read(&w.src_path).and_then(|()| crate::file_access::check_write(&w.out))?;
+        if let Some((from, to)) = &w.proxy {
+            crate::file_access::check_read(from).and_then(|()| crate::file_access::check_write(to))?;
+        }
         if let Some(d) = Path::new(&w.out).parent() {
             std::fs::create_dir_all(d).map_err(|e| format!("{}: {e}", d.display()))?;
         }

@@ -555,6 +555,7 @@ fn remove_template(s: &mut Session, p: &Value) -> Result<Value> {
     let key = str_p(p, "template").ok_or_else(|| bad("graphics.template.remove", "need `template`"))?;
     let e = find_template(s, key)?;
     let path = e.path.ok_or_else(|| bad("graphics.template.remove", "built-in templates cannot be removed"))?;
+    crate::file_access::check_write(&path).map_err(EngineError::Other)?;
     std::fs::remove_file(&path).map_err(|x| EngineError::Other(format!("{path}: {x}")))?;
     Ok(json!({"removed": e.template.id}))
 }

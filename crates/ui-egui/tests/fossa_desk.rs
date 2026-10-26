@@ -82,6 +82,19 @@ fn shown_areas(h: &H) -> Vec<(egui::Id, egui::Rect)> {
     })
 }
 
+/// The person's own click at `pos` (the agent's `ui.click` is refused in a desk).
+fn person_click(h: &mut H, pos: egui::Pos2, button: egui::PointerButton) {
+    h.event(egui::Event::PointerMoved(pos));
+    h.event(egui::Event::PointerButton { pos, button, pressed: true, modifiers: Default::default() });
+    h.event(egui::Event::PointerButton { pos, button, pressed: false, modifiers: Default::default() });
+}
+
+/// The person pressing `key` with the pointer at `pos` (keys go to the desk under the pointer).
+fn person_key(h: &mut H, pos: egui::Pos2, key: egui::Key) {
+    h.event(egui::Event::PointerMoved(pos));
+    h.key_press(key);
+}
+
 fn exec(h: &mut H, command: &str, params: Value) -> Value {
     h.state_mut().desk.control("engine.execute", json!({"command": command, "params": params})).unwrap_or_else(|e| panic!("{command}: {e}"))
 }
@@ -152,7 +165,7 @@ fn fossa_desk() {
     let about = filmcraft_ui_egui::fid("About FilmCraft");
     let r = h.ctx.memory(|m| m.area_rect(about)).expect("About is open");
     assert!(desk.contains_rect(r), "About {r:?} inside the desk {desk:?}");
-    h.state_mut().desk.control("ui.key", json!({"key": "Escape"})).unwrap();
+    person_key(&mut h, r.center(), egui::Key::Escape);
     settle(&mut h, 0.6);
     assert!(!shown_areas(&h).iter().any(|(id, _)| *id == about), "Escape closed About");
 
@@ -174,7 +187,7 @@ fn fossa_desk() {
     let at = h.state_mut().desk.control("ui.timeline.locate", json!({"clip": clip2, "edge": "in"})).unwrap();
     let (x, y) = (at["x"].as_f64().unwrap() + 60.0, at["y"].as_f64().unwrap());
     assert!(PANEL.contains(egui::pos2(x as f32, y as f32)), "{x},{y} in view");
-    h.state_mut().desk.control("ui.click", json!({"x": x, "y": y, "button": "right"})).unwrap();
+    person_click(&mut h, egui::pos2(x as f32, y as f32), egui::PointerButton::Secondary);
     settle(&mut h, 0.8);
     if let Ok(path) = std::env::var("FOSSA_MENU_SHOT") {
         h.render().unwrap().save(path).unwrap();
@@ -185,7 +198,7 @@ fn fossa_desk() {
     for (id, r) in &menus {
         assert!(PANEL.expand(0.5).contains_rect(*r), "menu {id:?} {r:?} inside the panel {PANEL:?}");
     }
-    h.state_mut().desk.control("ui.key", json!({"key": "Escape"})).unwrap();
+    person_key(&mut h, egui::pos2(x as f32, y as f32), egui::Key::Escape);
     settle(&mut h, 0.6);
     assert!(shown_areas(&h).iter().all(|(id, _)| !menus.iter().any(|(m, _)| m == id)), "Escape closed the menu");
 
@@ -198,4 +211,48 @@ fn fossa_desk() {
         assert!(image::load_from_memory(&png).is_ok());
         h.run_steps(8);
     }
+}
+
+/// The agent's requests reach files only in the desk's own folder (or the folders the host
+/// names); its made-up clicks are refused.
+#[test]
+#[ignore]
+fn fossa_desk_files() {
+    let ctx = egui::Context::default();
+    let mut desk = Desk::new(&ctx, None);
+    let folder = desk.folder().expect("the desk has its own folder").to_path_buf();
+    assert!(folder.file_name().unwrap().to_string_lossy().starts_with("fossa-filmcraft-"), "{}", folder.display());
+    desk.open("fossa_frame.png", still(320, 180));
+    let outside = std::env::temp_dir().join(format!("fc-desk-outside-{}", std::process::id()));
+    std::fs::create_dir_all(&outside).unwrap();
+    let at = |d: &std::path::Path, n: &str| d.join(n).to_string_lossy().into_owned();
+    let exec = |desk: &mut Desk, command: &str, params: Value| desk.control("engine.execute", json!({"command": command, "params": params}));
+
+    // outside: refused, for writes and reads
+    let e = exec(&mut desk, "file.saveAs", json!({"path": at(&outside, "leak.fcproj")})).unwrap_err();
+    assert!(e.contains("automation path rejected"), "{e}");
+    let e = exec(&mut desk, "file.exportMedia", json!({"path": at(&outside, "leak.wav"), "format": "wav", "wait": true})).unwrap_err();
+    assert!(e.contains("automation path rejected"), "{e}");
+    std::fs::write(outside.join("secret.png"), still(16, 16)).unwrap();
+    let e = exec(&mut desk, "file.import", json!({"paths": [at(&outside, "secret.png")]})).unwrap_err();
+    assert!(e.contains("automation path rejected"), "{e}");
+    assert!(desk.take_saved().is_empty(), "nothing went out");
+
+    // inside the desk's folder: works, and the file comes back to the host
+    exec(&mut desk, "file.saveAs", json!({"path": at(&folder, "cut.fcproj")})).unwrap();
+    exec(&mut desk, "file.exportEdl", json!({"path": at(&folder, "cut.edl")})).unwrap();
+    let saved: Vec<String> = desk.take_saved().into_iter().map(|(n, _)| n).collect();
+    assert!(saved.iter().any(|n| n == "cut.fcproj") && saved.iter().any(|n| n == "cut.edl"), "{saved:?}");
+
+    // the host can name other folders
+    desk.set_file_roots(&[&outside], &[&outside]).unwrap();
+    exec(&mut desk, "file.saveAs", json!({"path": at(&outside, "there.fcproj")})).unwrap();
+    assert!(exec(&mut desk, "file.saveAs", json!({"path": at(&folder, "cut2.fcproj")})).is_err(), "the desk's folder is no longer named");
+
+    // made-up input is refused: it would play out unconfined in the person's frames
+    for m in ["ui.click", "ui.key", "ui.drag", "ui.type", "ui.move", "ui.scroll"] {
+        let e = desk.control(m, json!({"x": 10, "y": 10, "key": "Escape", "text": "x"})).unwrap_err();
+        assert!(e.contains("use engine.execute"), "{m}: {e}");
+    }
+    let _ = std::fs::remove_dir_all(outside);
 }

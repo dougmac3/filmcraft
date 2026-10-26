@@ -440,6 +440,7 @@ impl Out {
         if settings.sink.is_some() {
             return Ok(Out::Mem(std::io::Cursor::new(Vec::new())));
         }
+        filmcraft_media::file_access::io_write(path).map_err(|e| ExportError::Io(format!("{path}: {e}")))?;
         let f = std::fs::File::create(path).map_err(|e| ExportError::Io(format!("{path}: {e}")))?;
         Ok(Out::File(std::io::BufWriter::new(f)))
     }
@@ -465,7 +466,7 @@ fn write_output(settings: &ExportSettings, path: &str, data: Vec<u8>) -> Result<
     let n = data.len() as u64;
     match &settings.sink {
         Some(sink) => (sink.0)(path, data),
-        None => std::fs::write(path, &data),
+        None => filmcraft_media::file_access::io_write(path).and_then(|()| std::fs::write(path, &data)),
     }
     .map_err(|e| ExportError::Io(e.to_string()))?;
     Ok(n)

@@ -28,6 +28,7 @@ fn parent_dir(path: &Path) -> PathBuf {
 /// `fsync` the directory so the rename itself survives a power cut. If anything fails the temp file
 /// is removed and `path` is untouched.
 pub fn atomic_write(path: &Path, data: &[u8]) -> io::Result<()> {
+    filmcraft_media::file_access::io_write(&path.to_string_lossy())?;
     let tmp = temp_path(path);
     let r = (|| {
         {
@@ -51,6 +52,7 @@ pub fn atomic_write(path: &Path, data: &[u8]) -> io::Result<()> {
 /// A write failure leaves no partial final file; temporary-file cleanup is best effort.
 #[cfg(not(target_arch = "wasm32"))]
 pub fn atomic_write_new(path: &Path, data: &[u8]) -> io::Result<()> {
+    filmcraft_media::file_access::io_write(&path.to_string_lossy())?;
     atomic_write_new_with(path, |file| file.write_all(data).and_then(|_| file.sync_all()))
 }
 

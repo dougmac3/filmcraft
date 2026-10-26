@@ -67,6 +67,7 @@ use serde_json::Value;
 
 pub use commands::{CommandSpec, command_specs, find as find_command};
 pub use filmcraft_export as export;
+pub use filmcraft_media::file_access;
 pub use filmcraft_project as project;
 pub use filmcraft_render as render;
 pub use filmcraft_time as time;
@@ -161,6 +162,7 @@ pub trait Services: Send + Sync {
 pub struct FsServices;
 impl Services for FsServices {
     fn read_file(&self, path: &str) -> std::io::Result<Vec<u8>> {
+        file_access::io_read(path)?;
         std::fs::read(path)
     }
     fn write_file(&self, path: &str, data: &[u8]) -> std::io::Result<()> {
@@ -168,6 +170,7 @@ impl Services for FsServices {
         filmcraft_format::atomic_write(std::path::Path::new(path), data)
     }
     fn write_file_new(&self, path: &str, data: &[u8]) -> std::io::Result<()> {
+        file_access::io_write(path)?;
         let path = std::path::Path::new(path);
         let dir = path.parent().filter(|p| !p.as_os_str().is_empty()).unwrap_or_else(|| std::path::Path::new("."));
         std::fs::create_dir_all(dir).map_err(|error| {
@@ -185,15 +188,21 @@ impl Services for FsServices {
         filmcraft_format::atomic_write_new(path, data)
     }
     fn file_size(&self, path: &str) -> std::io::Result<u64> {
+        file_access::io_read(path)?;
         let m = std::fs::metadata(path)?;
         if m.is_file() { Ok(m.len()) } else { Err(std::io::Error::new(std::io::ErrorKind::NotFound, format!("{path} is not a file"))) }
     }
     fn list_dir(&self, dir: &str) -> Option<std::io::Result<Vec<String>>> {
         let dir = if dir.is_empty() { "." } else { dir };
+        if let Err(e) = file_access::io_read(dir) {
+            return Some(Err(e));
+        }
         Some(std::fs::read_dir(dir).map(|rd| rd.flatten().map(|e| e.file_name().to_string_lossy().to_string()).collect()))
     }
     fn file_loader(&self) -> Option<filmcraft_media::sequence::FrameLoader> {
-        Some(std::sync::Arc::new(|p: &str| std::fs::read(p)))
+        // in the scope of whoever opened the sequence: an agent's frames come from its own folders
+        let scope = file_access::ScopeHandle::capture();
+        Some(std::sync::Arc::new(move |p: &str| scope.run(|| file_access::io_read(p)).and_then(|()| std::fs::read(p))))
     }
     /// Media are read in place from the open file: a clip costs its index, not its size.
     #[cfg(any(unix, windows))]
@@ -201,7 +210,7 @@ impl Services for FsServices {
         Some(filmcraft_media::reader::FileReader::open(std::path::Path::new(path)).map(|r| std::sync::Arc::new(r) as filmcraft_media::SharedReader))
     }
     fn list_entries(&self, dir: &str) -> Option<std::io::Result<Vec<media_browser::DirEntry>>> {
-        Some(media_browser::std_list_entries(dir))
+        Some(file_access::io_read(dir).and_then(|()| media_browser::std_list_entries(dir)))
     }
     fn volumes(&self) -> Vec<media_browser::Volume> {
         media_browser::std_volumes()
@@ -211,6 +220,7 @@ impl Services for FsServices {
     }
     fn read_range(&self, path: &str, offset: u64, len: usize) -> std::io::Result<Vec<u8>> {
         use std::io::{Read, Seek, SeekFrom};
+        file_access::io_read(path)?;
         let mut f = std::fs::File::open(path)?;
         f.seek(SeekFrom::Start(offset))?;
         let mut out = Vec::with_capacity(len);
@@ -672,6 +682,16 @@ impl Session {
 
     /// Replace preferences (persisting them and updating the worker).
     pub fn set_prefs(&mut self, p: autosave::Preferences) -> std::io::Result<()> {
+        // the folders preferences name are written to later, by whoever works then: an agent may
+        // name only folders it may write ([`file_access`])
+        let (old, new) = (&self.prefs, &p);
+        let folders = [(&old.media_cache.location, &new.media_cache.location), (&old.media_cache.database_location, &new.media_cache.database_location)];
+        for (_, d) in folders.into_iter().filter(|(o, n)| o != n && !n.trim().is_empty()) {
+            file_access::io_write(d.trim())?;
+        }
+        for d in new.auto_save.scratch_folders.iter().filter(|d| !old.auto_save.scratch_folders.contains(d)) {
+            file_access::io_write(d)?;
+        }
         let cache_changed = self.prefs.media_cache != p.media_cache;
         self.prefs = p;
         self.prefs.apply_hardware_decoding();

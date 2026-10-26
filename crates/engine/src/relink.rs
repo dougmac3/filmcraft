@@ -477,6 +477,9 @@ pub fn auto_relink(s: &mut Session, p: &Value) -> Result<Value> {
 /// Files under `root` by lower-case file name (breadth-first, at most `limit` files).
 pub fn index_folder(root: &Path, limit: usize) -> BTreeMap<String, Vec<PathBuf>> {
     let mut out: BTreeMap<String, Vec<PathBuf>> = BTreeMap::new();
+    if crate::file_access::check_read(&root.to_string_lossy()).is_err() {
+        return out;
+    }
     let mut queue = std::collections::VecDeque::from([root.to_path_buf()]);
     let mut n = 0;
     while let Some(d) = queue.pop_front() {
@@ -564,7 +567,7 @@ pub fn make_offline(s: &mut Session, p: &Value) -> Result<Value> {
     let mut deleted = Vec::new();
     if delete {
         for (_, path) in &files {
-            if std::fs::remove_file(path).is_ok() {
+            if crate::file_access::check_write(path).is_ok() && std::fs::remove_file(path).is_ok() {
                 deleted.push(path.clone());
             }
         }

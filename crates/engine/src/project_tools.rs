@@ -1082,6 +1082,7 @@ fn project_settings_scratch(s: &mut Session, p: &Value) -> Result<Value> {
                 return Err(bad("file.projectSettings.scratchDisks", format!("`{k}` must be a folder on this computer, not a network share or device")));
             }
             Some(Value::String(x)) => {
+                crate::file_access::check_write(x).map_err(EngineError::Other)?;
                 chosen.push(x.clone());
                 *slot = Some(x.clone());
             }

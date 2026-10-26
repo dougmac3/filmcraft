@@ -392,6 +392,7 @@ pub fn create(s: &mut Session, p: &Value) -> Result<Value> {
 fn copy_for_ingest(s: &mut Session, item: ItemId, path: &str, dir: &Path) -> Result<String> {
     let source = Path::new(path);
     let name = source.file_name().ok_or_else(|| bad("ingest", "source has no file name"))?;
+    crate::file_access::check_read(path).and_then(|()| crate::file_access::check_write(&dir.to_string_lossy())).map_err(EngineError::Other)?;
     let mut input = std::fs::File::open(source).map_err(|e| EngineError::Other(format!("{path}: {e}")))?;
     std::fs::create_dir_all(dir).map_err(|e| EngineError::Other(format!("{}: {e}", dir.display())))?;
     let mut number = 1u64;

@@ -472,6 +472,8 @@ pub fn spawn_export(s: &mut Session, project: Arc<Project>, seq: ItemId, mut set
         let services = s.services.clone();
         settings.sink = Some(filmcraft_export::OutputSink(Arc::new(move |path: &str, data: Vec<u8>| services.write_file(path, &data))));
     }
+    // the encoders write the file (and its numbered frames beside it) themselves
+    crate::file_access::check_write(&settings.path).map_err(EngineError::Other)?;
     if let Some(dir) = Path::new(&settings.path).parent().filter(|d| !d.as_os_str().is_empty() && !s.services.export_in_memory()) {
         let _ = std::fs::create_dir_all(dir);
     }
@@ -511,14 +513,16 @@ pub fn spawn_export(s: &mut Session, project: Arc<Project>, seq: ItemId, mut set
 
 /// Last-resort guard for a background job body (export, previews, proxies, …): a panic marks the
 /// job failed with an error instead of killing its thread and leaving the job "running" forever.
-/// The panic hook has already logged where it happened.
+/// The panic hook has already logged where it happened. The job runs in the file scope of the
+/// command that started it ([`crate::file_access`]): an agent's job reaches only the agent's folders.
 pub(crate) fn guard_job(
     progress: Arc<filmcraft_export::Progress>,
     result: Arc<std::sync::Mutex<Option<std::result::Result<filmcraft_export::Report, String>>>>,
     run: impl FnOnce() + Send + 'static,
 ) -> impl FnOnce() + Send + 'static {
+    let scope = crate::file_access::ScopeHandle::capture();
     move || {
-        if std::panic::catch_unwind(std::panic::AssertUnwindSafe(run)).is_err() {
+        if scope.run(|| std::panic::catch_unwind(std::panic::AssertUnwindSafe(run))).is_err() {
             let msg = "internal error (see the crash log); the job was stopped".to_string();
             *progress.error.lock().unwrap_or_else(|x| x.into_inner()) = Some(msg.clone());
             progress.finished.store(true, Ordering::Relaxed);

@@ -7,6 +7,9 @@
 //! [`Desk::commands`]), and can show one panel of it alone ([`Desk::panel_ui`]) narrowed to what the
 //! person is working on ([`Desk::focus`]: a selection and a view, e.g. the Timeline around one cut).
 //! Windows, menus, popups and tooltips stay inside the rect the desk (or the panel) is given.
+//!
+//! The agent's requests read and write files only in the desk's own folder, or the folders the
+//! host names ([`Desk::set_file_roots`]); the person's own clicks and dialogs are not confined.
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -16,7 +19,7 @@ use std::sync::{Arc, Mutex};
 
 use eframe::egui_wgpu;
 use egui::{Style, Theme, ThemePreference};
-use filmcraft_engine::{FsServices, Services, Session, media_browser};
+use filmcraft_engine::{FsServices, Services, Session, file_access, media_browser};
 use serde_json::{Value, json};
 
 use crate::FilmcraftApp;
@@ -53,6 +56,7 @@ impl Services for HostedFiles {
     }
     // ponytail: a written file is held twice (for reads and for the host) until take_saved; one shared buffer if long exports run out of memory
     fn write_file(&self, path: &str, data: &[u8]) -> std::io::Result<()> {
+        filmcraft_engine::file_access::io_write(path)?;
         let name = std::path::Path::new(path).file_name().map_or_else(|| path.to_string(), |n| n.to_string_lossy().into_owned());
         self.written.lock().map_err(|_| std::io::Error::other("poisoned"))?.insert(path.to_string(), data.to_vec());
         self.saved.lock().map_err(|_| std::io::Error::other("poisoned"))?.push((name, data.to_vec()));
@@ -123,9 +127,13 @@ pub struct Desk {
     app: FilmcraftApp,
     ctx: egui::Context,
     files: Arc<HostedFiles>,
-    /// Where files Fossa opens are put for the media readers (one folder per open).
-    inbox: PathBuf,
+    /// The desk's own folder: files Fossa opens are put in it for the media readers (one folder
+    /// per open), and Save and Export name their files in it. None when it could not be made.
+    folder: Option<PathBuf>,
     opened: u32,
+    /// Where the agent's requests ([`Self::control`]) may read and write files: the desk's own
+    /// folder unless the host names others ([`Self::set_file_roots`]); none without that folder.
+    roots: Arc<file_access::AutomationRoots>,
     look: Option<Look>,
     /// The last press was inside the desk: its shortcuts act until a press lands elsewhere.
     focused: bool,
@@ -134,26 +142,33 @@ pub struct Desk {
     input: Option<egui::InputState>,
 }
 
-/// Where Save and Export put their files (then handed to the host by [`Desk::take_saved`]).
-fn out_dir() -> PathBuf {
-    std::env::temp_dir().join("fossa_filmcraft").join("out")
+/// `name` as a file in `dir`, where Save and Export put their files (then handed to the host by
+/// [`Desk::take_saved`]); a suggested name may be a full path.
+fn out_path(dir: &Path, name: &str) -> String {
+    let name = Path::new(name).file_name().map_or_else(|| "untitled".to_string(), |n| n.to_string_lossy().into_owned());
+    dir.join(name).to_string_lossy().into_owned()
 }
 
-/// `name` as a file in [`out_dir`] (a suggested name may be a full path).
-fn out_path(name: &str) -> String {
-    let name = Path::new(name).file_name().map_or_else(|| "untitled".to_string(), |n| n.to_string_lossy().into_owned());
-    out_dir().join(name).to_string_lossy().into_owned()
+/// A new folder no one else could have made first: a name not guessed in advance, made fresh (an
+/// existing one fails), private on Unix.
+fn fresh_folder() -> Option<PathBuf> {
+    let tag = std::hash::BuildHasher::hash_one(&std::collections::hash_map::RandomState::new(), std::time::SystemTime::now());
+    let dir = std::env::temp_dir().join(format!("fossa-filmcraft-{}-{tag:016x}", std::process::id()));
+    std::fs::create_dir(&dir).ok()?;
+    #[cfg(unix)]
+    std::fs::set_permissions(&dir, std::os::unix::fs::PermissionsExt::from_mode(0o700)).ok()?;
+    Some(dir)
 }
 
 /// File > Open, Import, Link Media, folder pickers: the system dialog on its own thread, so the
-/// host's window keeps drawing while it is open. Save and Export name a file in [`out_dir`] at once.
-fn run_dialog(dialog: FileDialog) -> Receiver<Vec<String>> {
+/// host's window keeps drawing while it is open. Save and Export name a file in `out` at once.
+fn run_dialog(out: &Path, dialog: FileDialog) -> Receiver<Vec<String>> {
     let (tx, rx) = std::sync::mpsc::channel();
     let t = |s: &str| crate::i18n::t(s).to_string();
     let (media, project) = (t("Media"), t("FilmCraft Project"));
     let dialog = match dialog {
         FileDialog::SaveProject { name } | FileDialog::SaveAs { name, .. } => {
-            let _ = tx.send(vec![out_path(&name)]);
+            let _ = tx.send(vec![out_path(out, &name)]);
             return rx;
         }
         FileDialog::OpenFile { filter, exts } => FileDialog::OpenFile { filter: t(&filter), exts },
@@ -197,17 +212,36 @@ impl Desk {
             app.set_wgpu(rs.clone());
         }
         app.audio = Some(Box::new(audio::CpalOut::new()));
+        // Without its own folder the desk opens no files and the agent gets none (no roots grant
+        // nothing).
+        let folder = fresh_folder();
+        let dirs: Vec<&Path> = folder.as_deref().into_iter().collect();
+        let roots = file_access::AutomationRoots::new(&dirs, &dirs).or_else(|_| file_access::AutomationRoots::new(&[], &[])).expect("no roots always opens");
         // Save and Export name a file instead of asking where: the bytes go to the host
-        app.hooks.pick_save = Some(Box::new(|name: &str| Some(out_path(name))));
-        app.hooks.pick_save_as = Some(Box::new(|_filter: &str, _exts: &[&str], name: &str| Some(out_path(name))));
+        let out = folder.clone().unwrap_or_else(std::env::temp_dir);
+        let (o1, o2, o3) = (out.clone(), out.clone(), out);
+        app.hooks.pick_save = Some(Box::new(move |name: &str| Some(out_path(&o1, name))));
+        app.hooks.pick_save_as = Some(Box::new(move |_filter: &str, _exts: &[&str], name: &str| Some(out_path(&o2, name))));
         // the other pickers show the system dialog without stopping the frame loop
-        app.hooks.run_dialog = Some(Box::new(run_dialog));
+        app.hooks.run_dialog = Some(Box::new(move |d: FileDialog| run_dialog(&o3, d)));
         // ponytail: Settings > Labels > Import preset asks this synchronous picker directly (the host's frames wait while it is open); move that button to pick_ui if it matters
         app.hooks.pick_open_file =
             Some(Box::new(|filter: &str, exts: &[&str]| rfd::FileDialog::new().add_filter(filter, exts).pick_file().map(|p| p.to_string_lossy().into_owned())));
         ctx.request_repaint();
-        let inbox = std::env::temp_dir().join("fossa_filmcraft").join(format!("in_{}", std::process::id()));
-        Self { app, ctx: ctx.clone(), files, inbox, opened: 0, look: None, focused: false, input: None }
+        Self { app, ctx: ctx.clone(), files, folder, opened: 0, roots, look: None, focused: false, input: None }
+    }
+
+    /// The desk's own folder (None when it could not be made): the agent may read and write in
+    /// it unless the host names other folders ([`Self::set_file_roots`]).
+    pub fn folder(&self) -> Option<&Path> {
+        self.folder.as_deref()
+    }
+
+    /// The folders the agent's requests may read and write (the project's, say), instead of only
+    /// the desk's own. Each must exist; none at all leaves the agent no files.
+    pub fn set_file_roots(&mut self, read: &[&Path], write: &[&Path]) -> Result<(), String> {
+        self.roots = file_access::AutomationRoots::new(read, write)?;
+        Ok(())
     }
 
     /// Open a file Fossa hands in (a PNG/JPEG frame, a clip, a project file), as a drop would:
@@ -227,7 +261,7 @@ impl Desk {
             .filter(|n: &String| !n.trim_matches('.').is_empty())
             .unwrap_or_else(|| "file".into());
         self.opened += 1;
-        let dir = self.inbox.join(self.opened.to_string());
+        let dir = self.folder.as_ref().ok_or("the desk has no folder for files")?.join("in").join(self.opened.to_string());
         std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
         let path = dir.join(&safe);
         std::fs::write(&path, bytes).map_err(|e| e.to_string())?;
@@ -266,16 +300,21 @@ impl Desk {
     }
 
     /// Run one control-channel request in-process, as the desktop app's TCP channel would
-    /// (`engine.execute {command, params}`, `engine.commands`, `ui.set`, `ui.panel.show`,
-    /// `ui.click`, ...; see [`crate::control`]). UI input (`ui.click`, `ui.key`, `ui.drag`, ...) is
-    /// queued and plays over the next frames. A request that needs the UI to settle first (an
-    /// element not on screen yet) fails with a message; ask again after a frame.
+    /// (`engine.execute {command, params}`, `engine.commands`, `ui.set`, `ui.panel.show`, ...; see
+    /// [`crate::control`]), its files confined to the desk's roots. A request that needs the UI to
+    /// settle first (an element not on screen yet) fails with a message; ask again after a frame.
     pub fn control(&mut self, method: &str, params: Value) -> Result<Value, String> {
         if matches!(method, "ui.resize" | "app.quit" | "ui.screenshot") {
             return Err(format!("`{method}` acts on a window of its own; a desk has none (use grab_png or the host's capture)"));
         }
+        // Made-up clicks and keys would play out in the person's own frames, where files are not
+        // confined: the agent uses commands, which are.
+        if matches!(method, "ui.click" | "ui.move" | "ui.drag" | "ui.scroll" | "ui.key" | "ui.type") {
+            return Err(format!("`{method}` is not taken inside Fossa: use engine.execute"));
+        }
         let (req, _reply) = ControlRequest::new(method, params);
-        match control::handle(&mut self.app, &self.ctx, &req) {
+        let (app, ctx) = (&mut self.app, &self.ctx);
+        match file_access::confine(&self.roots, || control::handle(app, ctx, &req)) {
             Outcome::Done(v) if v["ok"] == true => Ok(v["result"].clone()),
             Outcome::Done(v) => Err(v["error"].as_str().unwrap_or("failed").to_string()),
             Outcome::Retry(msg) => Err(msg),
@@ -373,9 +412,8 @@ impl Desk {
         )
     }
 
-    /// Call from the host's `eframe::App::raw_input_hook`: the input [`Self::control`] queues
-    /// (`ui.click`, `ui.drag`, `ui.key`, ...) joins the window's input there, before egui decides
-    /// which widget is under the pointer. Without it queued pointer input reaches no widget.
+    /// Call from the host's `eframe::App::raw_input_hook`: the editor notes there whether the
+    /// window has focus (and, on macOS, takes a Ctrl-click as a right click).
     pub fn raw_input_hook(&mut self, ctx: &egui::Context, raw: &mut egui::RawInput) {
         eframe::App::raw_input_hook(&mut self.app, ctx, raw);
     }

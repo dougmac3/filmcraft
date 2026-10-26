@@ -1072,6 +1072,7 @@ fn convert(bindings: Vec<Binding>, platform: Option<Platform>) -> Vec<Binding> {
 }
 
 fn read_file(path: &Path) -> std::result::Result<PresetFile, String> {
+    crate::file_access::check_read(&path.to_string_lossy())?;
     let bytes = std::fs::read(path).map_err(|e| format!("{}: {e}", path.display()))?;
     let f: PresetFile = serde_json::from_slice(&bytes).map_err(|e| format!("{}: {e}", path.display()))?;
     if f.format != FILE_FORMAT {
@@ -1081,6 +1082,7 @@ fn read_file(path: &Path) -> std::result::Result<PresetFile, String> {
 }
 
 fn write_file(path: &Path, f: &PresetFile) -> std::result::Result<(), String> {
+    crate::file_access::check_write(&path.to_string_lossy())?;
     if let Some(d) = path.parent() {
         std::fs::create_dir_all(d).map_err(|e| format!("{}: {e}", d.display()))?;
     }

@@ -545,6 +545,7 @@ impl LabelPreset {
     /// Read and check a preset file ([`LabelPreset::parse`]).
     pub fn read(path: &Path) -> std::result::Result<Self, String> {
         use std::io::Read as _;
+        crate::file_access::check_read(&path.to_string_lossy())?;
         let file = std::fs::File::open(path).map_err(|e| format!("{}: {e}", path.display()))?;
         let mut bytes = Vec::new();
         file.take(LABEL_PRESET_MAX_BYTES + 1).read_to_end(&mut bytes).map_err(|e| format!("{}: {e}", path.display()))?;

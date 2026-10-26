@@ -84,6 +84,7 @@ pub(crate) fn commands() -> Vec<CommandSpec> {
 }
 
 fn import_lut(s: &mut Session, path: &str, name: Option<&str>) -> Result<(String, Value)> {
+    crate::file_access::check_read(path).map_err(|e| bad("lut.import", e))?;
     let text = std::fs::read_to_string(path).map_err(|e| bad("lut.import", format!("{path}: {e}")))?;
     let fmt = LutFormat::from_path(path).ok_or_else(|| bad("lut.import", "expected a .cube or .3dl file"))?;
     let lut = Lut::parse(&text, Some(fmt)).map_err(|e| bad("lut.import", format!("{path}: {e}")))?;
@@ -158,6 +159,7 @@ fn export(s: &mut Session, p: &Value) -> Result<Value> {
         LutFormat::Cube => lut.to_cube(),
         LutFormat::ThreeDl => lut.to_3dl().map_err(|e| bad("lut.export", e))?,
     };
+    crate::file_access::check_write(path).map_err(|e| bad("lut.export", e))?;
     std::fs::write(path, &text).map_err(|e| bad("lut.export", format!("{path}: {e}")))?;
     Ok(json!({"path": path, "bytes": text.len()}))
 }
@@ -429,6 +431,7 @@ fn preset_thumbnails(_: &mut Session, p: &Value) -> Result<Value> {
     let mut out = json!({"presets": presets.iter().map(|x| x.name).collect::<Vec<_>>(), "width": img.w, "height": img.h, "cell": [w, h], "columns": cols});
     if let Some(path) = str_p(p, "path") {
         let png = filmcraft_export::encode_png(img.over_black_rgba8(), img.w as u32, img.h as u32).map_err(|e| bad(cmd, e.to_string()))?;
+        crate::file_access::check_write(path).map_err(|e| bad(cmd, e))?;
         std::fs::write(path, png).map_err(|e| bad(cmd, format!("{path}: {e}")))?;
         out["path"] = json!(path);
     }

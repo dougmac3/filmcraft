@@ -225,7 +225,7 @@ fn safe_name(s: &str) -> String {
 }
 
 fn ensure_dir(s: &Session, dir: &str) {
-    if !s.services.export_in_memory() && !dir.is_empty() {
+    if !s.services.export_in_memory() && !dir.is_empty() && crate::file_access::check_write(dir).is_ok() {
         let _ = std::fs::create_dir_all(dir);
     }
 }

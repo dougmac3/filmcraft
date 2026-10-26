@@ -117,6 +117,7 @@ pub fn software_renderer(app: &FilmcraftApp) -> bool {
 /// file manager). The host hook does it on the desktop; otherwise the path is opened as a
 /// `file://` URL.
 pub fn open_path(app: &mut FilmcraftApp, ctx: &egui::Context, path: &str, reveal: bool) -> Result<(), String> {
+    filmcraft_engine::file_access::check_read(path)?;
     app.ui.extras.opened.push(path.to_string());
     if app.ui.extras.opened.len() > 50 {
         app.ui.extras.opened.remove(0);

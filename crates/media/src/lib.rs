@@ -14,6 +14,7 @@ pub mod cache;
 pub mod cancel;
 pub mod digits;
 pub mod dpx;
+pub mod file_access;
 pub mod generators;
 pub mod pending;
 pub mod reader;
