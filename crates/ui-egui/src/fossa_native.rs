@@ -142,6 +142,14 @@ pub struct Desk {
     input: Option<egui::InputState>,
 }
 
+/// How long [`Desk::render_clip`] waits for its export.
+// ponytail: one fixed wait whatever the cut's length; scale it with the duration if long cuts are rendered
+pub const RENDER_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(300);
+
+/// The project as it stood at [`Desk::edit_mark`]; holding it keeps that project alive, so
+/// [`Desk::edited_since`] compares the very same one.
+pub struct EditMark(Arc<filmcraft_project::Project>);
+
 /// `name` as a file in `dir`, where Save and Export put their files (then handed to the host by
 /// [`Desk::take_saved`]); a suggested name may be a full path.
 fn out_path(dir: &Path, name: &str) -> String {
@@ -297,6 +305,63 @@ impl Desk {
             return Err("the frame is still loading; try again in a moment".into());
         }
         filmcraft_export::still::encode(&img, filmcraft_export::still::StillFormat::Png, 8).map_err(|e| e.to_string())
+    }
+
+    /// The open sequence, In to Out (the whole of it without marks), as an H.264 MP4 with its
+    /// sound, (file name, bytes), for Fossa to keep as a take. The editor's own exporter encodes
+    /// it (its built-in H.264 and AAC encoders, no ffmpeg) in memory; nothing stays in the desk's
+    /// folder and nothing is handed out by [`Self::take_saved`]. None when no sequence is open.
+    /// Waits for the export, up to [`RENDER_TIMEOUT`] (then cancels it).
+    pub fn render_clip(&mut self) -> Result<Option<(String, Vec<u8>)>, String> {
+        let s = &mut self.app.session;
+        if s.state.active_sequence.is_none() {
+            return Ok(None);
+        }
+        let name = "cut.mp4";
+        let dir = self.folder.as_ref().ok_or("the desk has no folder for files")?.join("render");
+        let path = dir.join(name).to_string_lossy().into_owned();
+        let v = s
+            .execute("file.exportMedia", json!({"path": path, "format": "h264", "audio": true, "range": "inOut", "wait": false}))
+            .map_err(|e| e.to_string())?;
+        let path = v["path"].as_str().unwrap_or(&path).to_string();
+        let job = s.jobs.iter().find(|j| Some(j.id) == v["job"].as_u64()).ok_or("the export did not start")?;
+        let (progress, result) = (job.progress.clone(), job.result.clone());
+        let until = std::time::Instant::now() + RENDER_TIMEOUT;
+        let done = loop {
+            if let Some(r) = result.lock().map_err(|_| "poisoned")?.take() {
+                break r;
+            }
+            if std::time::Instant::now() > until {
+                progress.cancel.store(true, Ordering::Relaxed);
+                break Err(format!("the render took longer than {} s and was stopped", RENDER_TIMEOUT.as_secs()));
+            }
+            std::thread::sleep(std::time::Duration::from_millis(20));
+        };
+        let bytes = self.files.written.lock().ok().and_then(|mut w| w.remove(&path));
+        if let Ok(mut saved) = self.files.saved.lock() {
+            saved.retain(|(n, _)| n != name);
+        }
+        let _ = std::fs::remove_file(&path);
+        done.map_err(|e| format!("render failed: {e}"))?;
+        bytes.filter(|b| !b.is_empty()).map(|b| Some((name.to_string(), b))).ok_or_else(|| "the render wrote no file".to_string())
+    }
+
+    /// A number that changes with every change to the project (an edit, an undo, a redo, a file
+    /// opened), so the host can tell an edit happened without rendering. An undo back to where it
+    /// was still changes it: [`Self::edit_mark`] and [`Self::edited_since`] tell that apart.
+    pub fn edit_revision(&self) -> u64 {
+        self.app.session.revision
+    }
+
+    /// The project as it stands now, to compare against later with [`Self::edited_since`].
+    pub fn edit_mark(&self) -> EditMark {
+        EditMark(self.app.session.project.clone())
+    }
+
+    /// The project is not the one `mark` took: false again after undoing back to it (an edit
+    /// makes a new project and undo puts the old one back).
+    pub fn edited_since(&self, mark: &EditMark) -> bool {
+        !Arc::ptr_eq(&mark.0, &self.app.session.project)
     }
 
     /// Run one control-channel request in-process, as the desktop app's TCP channel would

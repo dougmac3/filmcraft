@@ -52,6 +52,14 @@ fn still(w: u32, h: u32) -> Vec<u8> {
     out.into_inner()
 }
 
+/// An MP4's duration from its `mvhd` box (timescale and duration, version 0 or 1).
+fn mp4_seconds(mp4: &[u8]) -> f64 {
+    let at = mp4.windows(4).position(|w| w == b"mvhd").expect("an mvhd box") + 4;
+    let be = |a: usize, n: usize| mp4[a..a + n].iter().fold(0u64, |v, b| v << 8 | *b as u64);
+    let (scale, duration) = if mp4[at] == 1 { (be(at + 20, 4), be(at + 24, 8)) } else { (be(at + 12, 4), be(at + 16, 4)) };
+    duration as f64 / scale as f64
+}
+
 type H = egui_kittest::Harness<'static, Host>;
 
 fn settle(h: &mut H, secs: f64) {
@@ -141,11 +149,28 @@ fn fossa_desk() {
     let f = h.state_mut().desk.focus(json!({"cut": cut})).unwrap();
     println!("focus: {f}");
     assert!(!f["editPoints"].as_array().unwrap().is_empty(), "the cut is selected for trimming");
+    let (rev, mark) = (h.state().desk.edit_revision(), h.state().desk.edit_mark());
     exec(&mut h, "trim.nudge", json!({"frames": 6}));
     let after = exec(&mut h, "sequence.inspect", json!({}));
     let item = &after["video"][0]["items"][0];
     assert_eq!(item["effects"].as_array().unwrap().iter().filter(|e| e["effect"] == "gaussian_blur").count(), 1, "the effect is on the shot");
     assert!(item["end"].as_f64().unwrap() > first["video"][0]["items"][0]["end"].as_f64().unwrap(), "the cut rolled later");
+    // the trim shows as an edit without rendering; undoing it shows as none
+    assert_ne!(h.state().desk.edit_revision(), rev, "the trim changed the revision");
+    assert!(h.state().desk.edited_since(&mark));
+    exec(&mut h, "edit.undo", json!({}));
+    assert!(!h.state().desk.edited_since(&mark), "undone back to the mark");
+    exec(&mut h, "edit.redo", json!({}));
+    assert!(h.state().desk.edited_since(&mark));
+    // the trimmed cut rendered as an MP4, as long as the sequence
+    let t0 = std::time::Instant::now();
+    let (name, mp4) = h.state_mut().desk.render_clip().unwrap().expect("a sequence is open");
+    println!("{name}: {} bytes in {:.1} s", mp4.len(), t0.elapsed().as_secs_f64());
+    assert!(mp4.len() > 1000 && &mp4[4..8] == b"ftyp", "an MP4");
+    let secs = mp4_seconds(&mp4);
+    let want = after["duration"].as_f64().unwrap() / filmcraft_time::TICKS_PER_SECOND as f64;
+    assert!((secs - want).abs() < 0.1, "MP4 {secs} s, sequence {want} s");
+    assert!(h.state_mut().desk.take_saved().is_empty(), "the render is not a save");
     // preview playback opens the desk's sound output (a machine without one plays silent)
     h.state_mut().desk.control("ui.playback", json!({"action": "play"})).unwrap();
     settle(&mut h, 0.8);
