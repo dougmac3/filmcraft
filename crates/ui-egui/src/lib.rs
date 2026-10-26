@@ -40,6 +40,9 @@ pub mod dock;
 mod dock_shared;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod fossa_native;
+// the desktop app's audio output, compiled into the desk (fossa_native), names this crate
+#[cfg(not(target_arch = "wasm32"))]
+extern crate self as filmcraft_ui_egui;
 mod dock_ui;
 /// Thumbnail textures kept before the least recently used are freed (each is up to 320 px wide).
 const MAX_THUMB_TEXTURES: usize = 512;
@@ -307,6 +310,9 @@ pub struct FilmcraftApp {
     pub playback: Playback,
     pub source_playback: source_playback::SourcePlayback,
     pub audio: Option<Box<dyn AudioOut>>,
+    /// Draw this one panel alone over the whole rect (no header, dock, tabs or status bar): a host
+    /// showing a single panel of the editor (Fossa Direct's in-chat cards).
+    pub solo: Option<PanelKind>,
     /// Audio during scrubbing (#211).
     pub scrub: scrub::ScrubAudio,
     pub hooks: HostHooks,
@@ -581,6 +587,7 @@ impl FilmcraftApp {
             playback: Playback { speed: 1.0, ..Default::default() },
             source_playback: Default::default(),
             audio: None,
+            solo: None,
             scrub: Default::default(),
             hooks: HostHooks::default(),
             // Unsaved changes left by a session that died are offered first thing.
@@ -1890,6 +1897,13 @@ impl FilmcraftApp {
         let t = self.tokens;
         let full = ui.max_rect();
         ui.painter().rect_filled(full, 0.0, t.app_bg);
+        if let Some(panel) = self.solo {
+            self.panel_body(ui, panel, full);
+            self.pending_timeline_drop = None;
+            panels::dialogs::show(self, &ctx);
+            self.watch_jobs(&ctx);
+            return;
+        }
         let header_h = if self.ui.show_header { 38.0 } else { 0.0 };
         let header = egui::Rect::from_min_size(full.min, egui::vec2(full.width(), header_h));
         if self.ui.show_header {

@@ -816,9 +816,9 @@
 	A file dialog is already open	Ya hay un cuadro de diálogo de archivos abierto
 	Exact name matches only	Solo coincidencias exactas de nombre
 	No candidates yet — Search a folder or Locate the file.	Aún no hay candidatos: busca en una carpeta o localiza el archivo.
-	✔ same file	✔ mismo archivo
-	✔ matches	✔ coincide
-	✖ different file	✖ archivo distinto
+	✓ same file	✓ mismo archivo
+	✓ matches	✓ coincide
+	✗ different file	✗ archivo distinto
 	Preview	Vista previa
 	Offline All	Todo sin conexión
 	Locate…	Localizar…

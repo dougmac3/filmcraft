@@ -184,7 +184,9 @@ pub fn show(app: &mut FilmcraftApp, ui: &mut egui::Ui, rect: Rect) {
     if r.changed() {
         exec(app, &ctx, "project.ingestSettings", json!({"enabled": ingest}));
     }
-    let w = c.add(egui::Button::new(egui::RichText::new("⚙").size(12.0)).frame(false)).on_hover_text(tl!("Open Ingest Settings"));
+    // a painted gear: no bundled face has U+2699
+    let w = c.add_sized([16.0, 16.0], egui::Button::new("").frame(false)).on_hover_text(tl!("Open Ingest Settings"));
+    crate::icons::paint(c.painter(), w.rect.shrink(2.0), crate::icons::Icon::Gear, if w.hovered() { app.tokens.text } else { app.tokens.text_dim });
     app.auto.add("mediaBrowser.ingestSettings", w.rect, "Open Ingest Settings");
     if w.clicked() {
         exec(app, &ctx, "project.ingestSettings", json!({}));

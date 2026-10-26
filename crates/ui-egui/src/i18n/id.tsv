@@ -821,9 +821,9 @@
 	Browse…	Telusuri…
 	Exact name matches only	Hanya nama yang sama persis
 	No candidates yet — Search a folder or Locate the file.	Belum ada kandidat — Cari di folder atau Temukan berkasnya.
-	✔ same file	✔ berkas sama
-	✔ matches	✔ cocok
-	✖ different file	✖ berkas berbeda
+	✓ same file	✓ berkas sama
+	✓ matches	✓ cocok
+	✗ different file	✗ berkas berbeda
 	Preview	Pratinjau
 	Offline All	Jadikan Semua Offline
 	Locate…	Temukan…

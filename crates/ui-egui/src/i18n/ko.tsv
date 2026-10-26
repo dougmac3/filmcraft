@@ -3581,9 +3581,9 @@
 	{total} items	항목 {total}개
 	● Recording	● 녹음 중
 	✓ Enable	✓ 사용
-	✔ matches	✔ 일치
-	✔ same file	✔ 같은 파일
-	✖ different file	✖ 다른 파일
+	✓ matches	✓ 일치
+	✓ same file	✓ 같은 파일
+	✗ different file	✗ 다른 파일
 	Open Recent	최근 항목 열기
 	Clear Recent Files	최근 파일 목록 지우기
 	Recent	최근 항목

@@ -852,9 +852,9 @@
 	A file dialog is already open	Ein Dateidialog ist bereits geöffnet
 	Exact name matches only	Nur exakte Namenstreffer
 	No candidates yet — Search a folder or Locate the file.	Noch keine Kandidaten – durchsuche einen Ordner oder such die Datei.
-	✔ same file	✔ dieselbe Datei
-	✔ matches	✔ passt
-	✖ different file	✖ andere Datei
+	✓ same file	✓ dieselbe Datei
+	✓ matches	✓ passt
+	✗ different file	✗ andere Datei
 	Preview	Vorschau
 	Offline All	Alle offline
 	Locate…	Datei suchen…

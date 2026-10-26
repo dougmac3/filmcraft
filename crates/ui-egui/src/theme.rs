@@ -440,6 +440,13 @@ pub fn install(ctx: &egui::Context, t: &Tokens) {
     add_craft_fonts(&mut fonts);
     crate::cjk::install(&mut fonts);
     crate::rtl::install(&mut fonts);
+    // last resort for the symbols Inter lacks (U+25B8, U+26A1, U+26A0, U+2713, U+2717...):
+    // JetBrains Mono (OFL 1.1, already bundled) has them; egui's default faces do not
+    for stack in fonts.families.values_mut() {
+        if !stack.iter().any(|n| n == "jbmono") {
+            stack.push("jbmono".into());
+        }
+    }
     if hosted {
         // installed again on each theme change: keep each face once per family
         for stack in fonts.families.values_mut() {

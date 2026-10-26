@@ -242,10 +242,10 @@ fn link_media(app: &mut FilmcraftApp, ctx: &egui::Context) {
                         egui::ScrollArea::vertical().id_salt("link-media-candidates-scroll").max_height(108.0).auto_shrink([false, true]).show(ui, |ui| {
                             for (k, (path, ok, idm, problems)) in d.candidates.iter().enumerate() {
                                 let mark = match (ok, idm) {
-                                    (true, Some(true)) => tl!("✔ same file"),
-                                    (true, _) => tl!("✔ matches"),
-                                    (false, Some(false)) => tl!("✖ different file"),
-                                    _ => "✖",
+                                    (true, Some(true)) => tl!("✓ same file"),
+                                    (true, _) => tl!("✓ matches"),
+                                    (false, Some(false)) => tl!("✗ different file"),
+                                    _ => "\u{2717}",
                                 };
                                 let text = format!("{mark}  {path}");
                                 let r = ui.selectable_label(

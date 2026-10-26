@@ -141,7 +141,7 @@ impl FilmcraftApp {
         Ok(())
     }
 
-    fn panel_body(&mut self, ui: &mut egui::Ui, panel: PanelKind, content: Rect) {
+    pub(crate) fn panel_body(&mut self, ui: &mut egui::Ui, panel: PanelKind, content: Rect) {
         self.auto.add(&format!("panel.{}", panel.id()), content, panel.title());
         let mut child = ui.new_child(egui::UiBuilder::new().max_rect(content).id_salt(("panel", panel.id())));
         child.set_clip_rect(content.intersect(ui.clip_rect()));

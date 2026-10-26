@@ -783,7 +783,7 @@ pub fn show(app: &mut FilmcraftApp, ctx: &egui::Context) {
                     let ok = c["ok"].as_bool().unwrap_or(false);
                     ui.label(format!(
                         "{} {}: {}",
-                        if ok { "✔" } else { "⚠" },
+                        if ok { "\u{2713}" } else { "\u{26a0}" },
                         c["name"].as_str().unwrap_or_default(),
                         c["detail"].as_str().unwrap_or_default()
                     ));

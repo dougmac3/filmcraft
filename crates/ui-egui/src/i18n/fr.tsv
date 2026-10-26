@@ -816,9 +816,9 @@
 	Browse…	Parcourir…
 	Exact name matches only	Correspondances exactes du nom uniquement
 	No candidates yet — Search a folder or Locate the file.	Aucun candidat pour l'instant — recherchez dans un dossier ou localisez le fichier.
-	✔ same file	✔ même fichier
-	✔ matches	✔ correspond
-	✖ different file	✖ fichier différent
+	✓ same file	✓ même fichier
+	✓ matches	✓ correspond
+	✗ different file	✗ fichier différent
 	Preview	Aperçu
 	Offline All	Tout mettre hors ligne
 	Locate…	Localiser…

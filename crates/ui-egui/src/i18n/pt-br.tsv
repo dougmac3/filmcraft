@@ -818,9 +818,9 @@
 	Browse…	Procurar…
 	Exact name matches only	Somente correspondências exatas de nome
 	No candidates yet — Search a folder or Locate the file.	Ainda não há candidatos: pesquise uma pasta ou localize o arquivo.
-	✔ same file	✔ mesmo arquivo
-	✔ matches	✔ corresponde
-	✖ different file	✖ arquivo diferente
+	✓ same file	✓ mesmo arquivo
+	✓ matches	✓ corresponde
+	✗ different file	✗ arquivo diferente
 	Preview	Pré-visualização
 	Offline All	Tudo offline
 	Locate…	Localizar…

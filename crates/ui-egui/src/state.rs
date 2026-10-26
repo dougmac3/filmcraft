@@ -204,6 +204,9 @@ pub struct TimelineView {
     /// fits again, unless the zoom was changed in between.
     #[serde(skip)]
     pub fit_empty: Option<f64>,
+    /// A time range (s) to show next, zoomed to fill the width (`ui.set {timeline: {range}}`).
+    #[serde(skip)]
+    pub fit_range: Option<(f64, f64)>,
     /// Audio tracks showing track keyframes instead of clip keyframes: track id → lane
     /// (`volume`, `pan`, `mute`, `send.<i>.level`, `fx.<slot>.<param>`).
     #[serde(default)]
@@ -237,6 +240,7 @@ impl Default for TimelineView {
             fit_pending: true,
             seen_playhead: None,
             fit_empty: None,
+            fit_range: None,
             track_lanes: Default::default(),
         }
     }

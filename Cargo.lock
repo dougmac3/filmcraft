@@ -2350,6 +2350,7 @@ dependencies = [
 name = "filmcraft-ui-egui"
 version = "0.12.0"
 dependencies = [
+ "cpal",
  "cpu-time",
  "craft-ui",
  "eframe",
@@ -2377,6 +2378,7 @@ dependencies = [
  "log",
  "pollster 0.4.0",
  "rayon",
+ "rfd",
  "rustix 1.1.5",
  "serde",
  "serde_json",

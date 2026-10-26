@@ -8,7 +8,7 @@
 //! - `engine.commands`: list engine commands; `ui.menu.list`: menu tree with enablement
 //! - `ui.inspect`: UI state + every registered widget (`elements`: id, label, rect)
 //! - `ui.elements {prefix?}`: registered widgets (optionally filtered by id prefix)
-//! - `ui.set {tool?, workspace?, mode?, theme?, focused?, playbackRes?, timeline?:{pps,scroll}}`
+//! - `ui.set {tool?, workspace?, mode?, theme?, focused?, playbackRes?, timeline?:{pps,scroll,range}}`
 //! - `ui.panel.show {panel}` / `ui.panel.close {panel}`
 //! - `ui.set {tts: {voice, pitch, pace, text…}}`: patch the Text to Speech panel draft
 //! - `ui.click {id | x,y, button?, count?, modifiers?}` / `ui.move {x,y}` / `ui.scroll {x,y,dx,dy}`
@@ -182,6 +182,13 @@ pub fn handle(app: &mut FilmcraftApp, ctx: &egui::Context, req: &ControlRequest)
                 }
                 if tl.get("fit").and_then(Value::as_bool) == Some(true) {
                     app.ui.timeline.fit_pending = true;
+                }
+                // `range: [from, to]` (s): show that span, zoomed to fill the width
+                if let Some([a, b]) = tl.get("range").and_then(Value::as_array).map(|r| r.iter().filter_map(Value::as_f64).collect::<Vec<_>>()).and_then(|r| <[f64; 2]>::try_from(r).ok()) {
+                    if !(a.is_finite() && b.is_finite() && b > a) {
+                        return err("`timeline.range` needs [from, to] seconds with to > from");
+                    }
+                    app.ui.timeline.fit_range = Some((a, b));
                 }
                 if let Some(v) = tl.get("videoTrackHeight").and_then(Value::as_f64) {
                     app.ui.timeline.video_track_h = v as f32;

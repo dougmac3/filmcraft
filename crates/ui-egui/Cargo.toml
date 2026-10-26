@@ -38,6 +38,11 @@ unicode-bidi = "0.3.18"
 # ArtCraft wordmark (PNG) for the About dialog and Home screen.
 image = { version = "0.25", default-features = false, features = ["png"] }
 
+# Fossa Direct's native desk (fossa_native): the desktop app's sound output and file dialogs
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+cpal = "0.16"
+rfd = { workspace = true }
+
 # Thread/process CPU clocks for frame-job profiling (safe wrappers; see frames.rs).
 [target.'cfg(unix)'.dependencies]
 rustix = { version = "1", default-features = false, features = ["std", "time"] }
